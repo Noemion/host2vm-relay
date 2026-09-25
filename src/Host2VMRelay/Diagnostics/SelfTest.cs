@@ -17,7 +17,7 @@ internal static class SelfTest
                 bool rejected = false; try { Rules.Compile(invalid); } catch (FormatException) { rejected = true; } Check(rejected, "reject " + invalid);
             }
             var encrypted = SecretStore.Protect("test-password-中文"); Check(!encrypted.Contains("test-password") && SecretStore.Unprotect(encrypted) == "test-password-中文", "DPAPI password roundtrip");
-            var path = Path.Combine(Path.GetTempPath(), "KylinTunnelTest-" + Guid.NewGuid()); var original = Settings.Folder;
+            var path = Path.Combine(Path.GetTempPath(), "Host2VMRelayTest-" + Guid.NewGuid()); var original = Settings.Folder;
             try { Settings.Folder = path; new Settings { ProtectedSecret = encrypted }.Save(); Check(Settings.Load().ProtectedSecret == encrypted && !File.ReadAllText(Path.Combine(path, "settings.json")).Contains("test-password"), "settings persist ciphertext only"); } finally { Settings.Folder = original; Directory.Delete(path, true); }
             using var server = new RuleServer(0) { Payload = compiled }; server.Start();
             var baseUrl = "http://127.0.0.1:" + server.Port;

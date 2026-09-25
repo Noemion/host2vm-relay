@@ -20,12 +20,6 @@ public sealed class Settings
     public static Settings Load()
     {
         var p = Path.Combine(Folder, "settings.json");
-        // Migrate the preview's settings without changing the DPAPI entropy.
-        var defaultFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Host2VMRelay");
-        var legacy = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KylinTunnel", "settings.json");
-        if (Folder == defaultFolder && !File.Exists(p) && File.Exists(legacy)) {
-            Directory.CreateDirectory(Folder); File.Copy(legacy, p, false);
-        }
         return File.Exists(p) ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(p)) ?? new() : new();
     }
     public void Save()

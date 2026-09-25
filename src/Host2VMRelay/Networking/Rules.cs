@@ -37,6 +37,6 @@ public static class Rules
                 result.Add((suffix ? "DOMAIN-SUFFIX," : "DOMAIN,") + domain);
             }
         }
-        return result.Count == 0 ? "# No company rules\n" : string.Join("\n", result.Distinct()) + "\n";
+        return result.Count == 0 ? "# No forwarding rules\n" : string.Join("\n", result.Distinct()) + "\n";
     }
 }

@@ -11,7 +11,7 @@ public sealed class RuleServer : IDisposable
     public RuleServer(int port = 17861) { listener = new TcpListener(IPAddress.Loopback, port); }
     public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
     private readonly CancellationTokenSource stop = new();
-    public string Payload = "# No company rules\n";
+    public string Payload = "# No forwarding rules\n";
     public DateTime LastReadUtc;
     public void Start() { listener.Start(); _ = Run(); }
     private async Task Run()

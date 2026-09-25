@@ -13,7 +13,7 @@ socket.on('message',message=>{
     assert(message.readUInt16BE(6)>0);
     const ip = [...message.subarray(message.length-4)];
     assert.equal(ip[0],198); assert.equal(ip[1],18);
-    console.log('PASS actual Mihomo DNS returns company Fake-IP: '+ip.join('.'));
+    console.log('PASS actual Mihomo DNS returns target Fake-IP: '+ip.join('.'));
   } catch(e) { console.error(e);process.exitCode=1; }
   socket.close();
 });

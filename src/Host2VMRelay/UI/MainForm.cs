@@ -81,7 +81,7 @@ public sealed class MainForm : Form
         secret.UseSystemPasswordChar = true; Row(g, "密码 / 私钥口令", secret); Row(g, "", remember);
         Row(g, "本机 SOCKS5 端口", socksPort); Row(g, "", retry);
         var buttons = new FlowLayoutPanel { AutoSize = true }; buttons.Controls.Add(connect); buttons.Controls.Add(disconnect); state.Margin = new Padding(15, 12, 0, 0); buttons.Controls.Add(state); Row(g, "", buttons);
-        Row(g, "使用提示", new Label { AutoSize = true, MaximumSize = new Size(620, 0), Text = "先在远端主机连接 VPN（如果需要）。首次 SSH 连接需要确认服务器指纹。\n关闭窗口会缩到托盘；退出应用会停止隧道。私钥登录直接读取所选文件，不复制私钥。" });
+        Row(g, "使用提示", new Label { AutoSize = true, MaximumSize = new Size(620, 0), Text = "请先确认远端主机可以访问目标地址。首次 SSH 连接需要确认服务器指纹。\n关闭窗口会缩到托盘；退出应用会停止隧道。私钥登录直接读取所选文件，不复制私钥。" });
     }
     private void BuildRules()
     {
@@ -96,8 +96,8 @@ public sealed class MainForm : Form
         var p = Page("接入 Clash"); var g = Grid(p);
         Row(g, "① 复制脚本", new Label { AutoSize = true, MaximumSize = new Size(620, 0), Text = "在 Clash Verge Rev 当前订阅的「编辑扩展脚本」中替换为本应用生成的脚本，保存并应用订阅。脚本保留你已有的 mieru UDP 设置，并接入本地动态规则。其他自定义逻辑需手动合并。" });
         var copy = new Button { Text = "复制 Clash 扩展脚本", Height = 40 }; copy.Click += (_, _) => { try { Clipboard.SetText(ClashScript.Generate((int)socksPort.Value, host.Text.Trim())); } catch (Exception ex) { Error(ex); return; } Log("扩展脚本已复制到剪贴板。"); MessageBox.Show("已复制。请粘贴到当前订阅的扩展脚本并应用。", "接入 Clash"); }; Row(g, "", copy);
-        Row(g, "② TUN 设置", new Label { AutoSize = true, MaximumSize = new Size(620, 0), Text = "选择规则模式，开启 TUN 和自动路由。\n路由排除添加虚拟机 IP/32（IPv6 用 /128）\nDNS 劫持包含：any:53 与 tcp://any:53\n脚本启用 Fake-IP，为公司域名优先分配映射地址。某些版本会由界面覆盖 TUN 设置，请在界面确认。需要支持 fake-ip-filter-mode: rule 的较新 Mihomo 内核。" });
-        Row(g, "③ 验证", new Label { AutoSize = true, MaximumSize = new Size(620, 0), Text = "连接隧道后，使用 Chrome 打开公司网页。在 Clash 连接列表确认命中「Host2VM Relay」。底部显示规则读取时间只代表订阅下载，不代表网站已连通。\n若 Chrome 自定义了安全 DNS，请先改用系统 DNS。规则中也需包含登录跳转域名。" });
+        Row(g, "② TUN 设置", new Label { AutoSize = true, MaximumSize = new Size(620, 0), Text = "选择规则模式，开启 TUN 和自动路由。\n路由排除添加虚拟机 IP/32（IPv6 用 /128）\nDNS 劫持包含：any:53 与 tcp://any:53\n脚本启用 Fake-IP，为目标域名优先分配映射地址。某些版本会由界面覆盖 TUN 设置，请在界面确认。需要支持 fake-ip-filter-mode: rule 的较新 Mihomo 内核。" });
+        Row(g, "③ 验证", new Label { AutoSize = true, MaximumSize = new Size(620, 0), Text = "连接隧道后，使用 Chrome 打开目标网页。在 Clash 连接列表确认命中「Host2VM Relay」。底部显示规则读取时间只代表订阅下载，不代表网站已连通。\n若 Chrome 自定义了安全 DNS，请先改用系统 DNS。规则中也需包含登录跳转域名。" });
         var testUrl = new TextBox { Text = settings.TestUrl };
         Row(g, "测试网址", testUrl);
         var test = new Button { Text = "通过 SOCKS5 测试网址", Height = 40 };
@@ -115,7 +115,7 @@ public sealed class MainForm : Form
             } catch (Exception ex) { Error(ex); } finally { if (!test.IsDisposed) test.Enabled = true; }
         };
         Row(g, "", test);
-        Row(g, "边界", new Label { AutoSize = true, MaximumSize = new Size(620, 0), Text = "仅支持 TCP（浏览器 HTTPS / SSH 等），不转发 UDP。VPN 仍由你在远端主机连接。请先停止旧 PowerShell 隧道，释放本机 1080 端口。程序不修改 Windows 路由或防火墙。" });
+        Row(g, "边界", new Label { AutoSize = true, MaximumSize = new Size(620, 0), Text = "仅支持 TCP（浏览器 HTTPS / SSH 等），不转发 UDP。请确保配置的本机 SOCKS 端口未被其他程序占用。程序不修改 Windows 路由或防火墙。" });
     }
     private void BuildLog() { var p = Page("运行日志"); log.Multiline = true; log.ReadOnly = true; log.ScrollBars = ScrollBars.Vertical; log.Dock = DockStyle.Fill; log.Font = new Font("Consolas", 14, FontStyle.Regular, GraphicsUnit.Pixel); p.Controls.Add(log); }
     private void Restore() { Show(); WindowState = FormWindowState.Normal; Activate(); }

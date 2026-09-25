@@ -4,7 +4,9 @@
 #ifndef OutputRoot
   #define OutputRoot "..\..\artifacts\release"
 #endif
-#define AppVersion "0.2.0"
+#ifndef AppVersion
+  #define AppVersion "0.2.1"
+#endif
 
 [Setup]
 AppId={{B49F96CE-C602-4C52-A415-61A77A0B4BE7}
@@ -27,7 +29,7 @@ WizardStyle=modern
 UninstallDisplayIcon={app}\Host2VMRelay.exe
 CloseApplications=yes
 RestartApplications=no
-AppMutex=Local\KylinTunnel.Desktop
+AppMutex=Local\Host2VMRelay.Desktop
 SetupLogging=yes
 VersionInfoDescription=Host2VM Relay offline installer
 

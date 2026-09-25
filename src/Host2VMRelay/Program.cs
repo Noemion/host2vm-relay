@@ -7,7 +7,7 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
         if (args.Contains("--self-test")) { SelfTest.Run(args.Last()); return; }
-        using var mutex = new Mutex(true, "Local\\KylinTunnel.Desktop", out bool first);
+        using var mutex = new Mutex(true, "Local\\Host2VMRelay.Desktop", out bool first);
         if (!first) { MessageBox.Show("应用已在运行，请从系统托盘打开。", "Host2VM Relay"); return; }
         try
         {

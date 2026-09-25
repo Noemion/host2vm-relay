@@ -40,7 +40,7 @@ function main(config, profileName) {
   config.rules = [...first, ...(config.rules ?? []).filter(r =>
     !first.includes(r) && !r.endsWith("," + node) && !r.endsWith("," + node + ",no-resolve"))];
 
-  // Preserve existing Fake-IP exceptions while putting company domains first.
+  // Preserve existing Fake-IP exceptions while putting selected domains first.
   const dns = config.dns = config.dns ?? {};
   const oldMode = dns["fake-ip-filter-mode"] ?? "blacklist";
   const oldFilter = dns["fake-ip-filter"] ?? [];

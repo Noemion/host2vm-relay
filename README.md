@@ -1,8 +1,8 @@
 # Host2VM Relay
 
-让 Windows 宿主机把**指定域名和 IP 的访问请求交给虚拟机转发**，其他流量继续使用原有规则。适合虚拟机已连接公司 VPN、宿主机也需要访问内网的场景。
+让 Windows 宿主机把**指定域名和 IP 的访问请求交给虚拟机转发**，其他流量继续使用原有规则。适合通过虚拟机访问特定网络资源的场景。
 
-支持密码或私钥登录、加密保存密码、托盘后台运行和断线重连。远端系统不限于 Linux 或麒麟。
+支持密码或私钥登录、加密保存密码、托盘后台运行和断线重连。远端支持任何提供 SSH TCP 转发服务的系统。
 
 ## 使用前准备
 
@@ -14,7 +14,7 @@
 
 ### 1. 安装
 
-在 [Releases](https://github.com/Noemion/host2vm-relay/releases) 下载名称以 `Setup.exe` 结尾的安装包，双击安装。
+[下载安装包](https://github.com/Noemion/host2vm-relay/releases/download/v0.2.1/Host2VMRelay-0.2.1-Setup.exe)，双击安装。其他架构便携包见 [Releases](https://github.com/Noemion/host2vm-relay/releases/latest) 页底部的 **Assets**。
 
 安装包自动选择系统架构，**不需要另外安装 .NET、Python 或编译器**。
 
@@ -49,7 +49,7 @@ code.example.com
 
 - 修改目标后点击「保存规则」，通常约 15 秒生效，无需重复粘贴脚本。
 - 关闭窗口会缩到托盘并继续运行；右键托盘图标可退出。
-- 使用期间保持虚拟机、所需 VPN、Clash 和本应用运行。
+- 使用期间保持虚拟机、Clash 和本应用运行。
 - 当前仅转发 TCP，适用于网页和 SSH，不支持 UDP。
 
 更多安装、构建和兼容性信息见 [部署说明](docs/DEPLOYMENT.md)，测试范围见 [验证记录](docs/VALIDATION.md)。
