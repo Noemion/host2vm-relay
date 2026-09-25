@@ -1,0 +1,56 @@
+name: Windows build and checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build
+        run: dotnet build -c Release
+      - name: Check rules and encrypted settings
+        shell: pwsh
+        run: |
+          $resultPath = Join-Path $env:RUNNER_TEMP 'self-test.txt'
+          $test = Start-Process -FilePath '.\bin\Release\net8.0-windows\Host2VMRelay.exe' -ArgumentList "--self-test `"$resultPath`"" -PassThru -Wait
+          Get-Content $resultPath
+          if ($test.ExitCode -ne 0) { throw 'Self-test failed' }
+          node test-script.cjs "$env:RUNNER_TEMP\mihomo-test.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Script test failed' }
+      - name: Install packaging compiler
+        shell: pwsh
+        run: |
+          $setup = Join-Path $env:RUNNER_TEMP 'inno-setup.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe' -OutFile $setup
+          $signature = Get-AuthenticodeSignature $setup
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notlike '*Pyrsys B.V.*') { throw 'Unexpected compiler signature' }
+          $compilerDir = Join-Path $env:RUNNER_TEMP 'inno'
+          $install = Start-Process $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CURRENTUSER /NOICONS /DIR=`"$compilerDir`"" -PassThru -Wait
+          if ($install.ExitCode -ne 0) { throw 'Compiler installation failed' }
+          "INNO_COMPILER=$compilerDir\ISCC.exe" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Publish all architectures and offline installer
+        shell: pwsh
+        run: .\build-release.ps1 -Iscc $env:INNO_COMPILER
+      - name: Check packaged x64 and x86 applications
+        shell: pwsh
+        run: |
+          foreach ($rid in @('win-x64','win-x86')) {
+            $resultPath = Join-Path $env:RUNNER_TEMP "$rid-self-test.txt"
+            $test = Start-Process -FilePath ".\artifacts\publish\$rid\Host2VMRelay.exe" -ArgumentList "--self-test `"$resultPath`"" -PassThru -Wait
+            Get-Content $resultPath
+            if ($test.ExitCode -ne 0) { throw "Packaged self-test failed: $rid" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Host2VMRelay-Windows
+          path: artifacts/release/

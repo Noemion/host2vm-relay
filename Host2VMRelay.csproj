@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Host2VMRelay</AssemblyName>
+    <Version>0.2.0</Version>
+    <Product>Host2VM Relay</Product>
+    <Description>Selective host-to-VM forwarding through SSH and Clash TUN.</Description>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SSH.NET" Version="2026.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+</Project>

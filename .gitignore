@@ -1,0 +1,12 @@
+bin/
+obj/
+*.user
+*.pfx
+publish/
+settings.json
+settings.json.tmp
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+artifacts/
