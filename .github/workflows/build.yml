@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   windows:
     runs-on: windows-latest
@@ -66,7 +69,7 @@ jobs:
         with:
           name: Host2VMRelay-Windows
           path: release
-      - name: Publish versioned preview release
+      - name: Publish versioned release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -74,8 +77,17 @@ jobs:
           [xml]$project = Get-Content Host2VMRelay.csproj
           $version = [string]$project.Project.PropertyGroup.Version
           $tag = "v$version"
-          gh release view $tag --json tagName 2>$null
-          if ($LASTEXITCODE -eq 0) { Write-Host "Release $tag already exists; preserving its assets."; exit 0 }
           $assets = @(Get-ChildItem release -File | ForEach-Object FullName)
-          gh release create $tag @assets --target $env:GITHUB_SHA --prerelease --title "Host2VM Relay $tag" --notes-file RELEASE_NOTES.md
+          $existing = gh release view $tag --json isPrerelease 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $metadata = $existing | ConvertFrom-Json
+            if (!$metadata.isPrerelease) { Write-Host "Release $tag already exists; preserving its assets."; exit 0 }
+            gh release upload $tag @assets --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed' }
+            gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" -f "sha=$env:GITHUB_SHA" -F force=false
+            if ($LASTEXITCODE -ne 0) { throw 'Release tag update failed' }
+            gh release edit $tag --prerelease=false --latest --title "Host2VM Relay $tag" --notes-file RELEASE_NOTES.md
+          } else {
+            gh release create $tag @assets --target $env:GITHUB_SHA --latest --title "Host2VM Relay $tag" --notes-file RELEASE_NOTES.md
+          }
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

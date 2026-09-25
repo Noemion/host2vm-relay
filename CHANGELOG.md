@@ -8,7 +8,7 @@
 - Fix publishing options in a versioned profile; keep trimming and Native AOT disabled for WinForms compatibility.
 - Include source build scripts, third-party notices, portable packages and SHA-256 checksums.
 
-## 0.1.0 — Initial preview
+## 0.1.0 — Initial release
 
 - Windows GUI for SSH SOCKS5 forwarding, tray operation and reconnect.
 - Windows DPAPI encrypted credential storage and private-key authentication.

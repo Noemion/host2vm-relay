@@ -17,7 +17,6 @@ No preinstalled .NET, Python, Node.js, OpenSSH client, compiler, or network down
 - Tray operation and automatic reconnection.
 - Domain, IP and CIDR rules with a local rule feed for Clash Verge.
 - Fake-IP DNS integration for selected domains.
-- Migration of settings from the early KylinTunnel preview.
 
 ## Requirements and validation
 
@@ -25,6 +24,6 @@ No preinstalled .NET, Python, Node.js, OpenSSH client, compiler, or network down
 - The VM must run an SSH server with TCP forwarding enabled. Clash TUN must be configured separately for transparent routing; VPN software remains in the VM when needed.
 - TCP only; UDP forwarding is not supported.
 - x64 and x86 packages tested on Windows 11 x64; installer, application launch and uninstall tested locally. ARM64 is packaged but has not been tested on ARM64 hardware.
-- This preview installer is not code-signed.
+- This installer is not code-signed.
 
-After installing, open **接入 Clash** in the application and apply the generated extension script once. Existing preview users should replace their previous script.
+After installing, open **接入 Clash** in the application and apply the generated extension script once. [Clash Verge Rev](https://github.com/clash-verge-rev/clash-verge-rev) is required for TUN integration.

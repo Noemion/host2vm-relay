@@ -20,7 +20,7 @@ Clash Verge/Mihomo、虚拟机和 VPN 是外部网络环境，不随应用安装
 
 ## 配置与升级
 
-配置保存在 `%LOCALAPPDATA%\Host2VMRelay`。旧预览版 `%LOCALAPPDATA%\KylinTunnel` 的设置首次启动时自动复制迁移，保留旧目录作为备份，DPAPI 密文仍由原 Windows 用户解密。卸载仅删除程序文件，保留设置。跨用户迁移密码密文无效，需要重新输入。
+配置保存在 `%LOCALAPPDATA%\Host2VMRelay`。旧版本 `%LOCALAPPDATA%\KylinTunnel` 的设置首次启动时自动复制迁移，保留旧目录作为备份，DPAPI 密文仍由原 Windows 用户解密。卸载仅删除程序文件，保留设置。跨用户迁移密码密文无效，需要重新输入。
 
 自包含运行时不会自动使用系统上较新的 .NET。维护者应使用更新后的 .NET SDK 重新发布，及时纳入运行时安全修复；.NET 8 的支持期结束前需要升级到后续 LTS。安装包尚未使用代码签名证书签名。
 
@@ -34,6 +34,6 @@ Clash Verge/Mihomo、虚拟机和 VPN 是外部网络环境，不随应用安装
 
 也可用 `-DotNet` 指定 SDK 路径，用 `-OutputDirectory` 指定输出目录；`-SkipInstaller` 仅生成三种架构的便携包。发布选项固定在 `Properties/PublishProfiles/Standalone.pubxml` 中。
 
-GitHub Actions 在 main 分支构建成功后，为尚未发布的项目版本创建预览 Release，并上传安装包、便携包及校验文件。已存在的同版本 Release 不会被覆盖；发布新版本前需更新项目和安装脚本中的版本号。
+GitHub Actions 在 main 分支构建成功后，为尚未发布的项目版本创建Release，并上传安装包、便携包及校验文件。已存在的同版本 Release 不会被覆盖；发布新版本前需更新项目和安装脚本中的版本号。
 
 参考：[.NET 单文件部署](https://learn.microsoft.com/en-us/dotnet/core/deploying/single-file/overview)、[Windows 支持范围](https://learn.microsoft.com/en-us/dotnet/core/install/windows)。
