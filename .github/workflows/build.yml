@@ -20,15 +20,15 @@ jobs:
         with:
           node-version: '22'
       - name: Build
-        run: dotnet build -c Release
+        run: dotnet build src/Host2VMRelay.csproj -c Release
       - name: Check rules and encrypted settings
         shell: pwsh
         run: |
           $resultPath = Join-Path $env:RUNNER_TEMP 'self-test.txt'
-          $test = Start-Process -FilePath '.\src\Host2VMRelay\bin\Release\net8.0-windows\Host2VMRelay.exe' -ArgumentList "--self-test `"$resultPath`"" -PassThru -Wait
+          $test = Start-Process -FilePath '.\src\bin\Release\net8.0-windows\Host2VMRelay.exe' -ArgumentList "--self-test `"$resultPath`"" -PassThru -Wait
           Get-Content $resultPath
           if ($test.ExitCode -ne 0) { throw 'Self-test failed' }
-          node tests/integration/test-script.cjs "$env:RUNNER_TEMP\mihomo-test.json"
+          node tests/test-script.cjs "$env:RUNNER_TEMP\mihomo-test.json"
           if ($LASTEXITCODE -ne 0) { throw 'Script test failed' }
       - name: Install packaging compiler
         shell: pwsh
@@ -74,7 +74,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          [xml]$project = Get-Content src/Host2VMRelay/Host2VMRelay.csproj
+          [xml]$project = Get-Content src/Host2VMRelay.csproj
           $version = [string]$project.Project.PropertyGroup.Version
           $tag = "v$version"
           $assets = @(Get-ChildItem release -File | ForEach-Object FullName)
