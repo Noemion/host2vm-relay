@@ -1,0 +1,27 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F4EE53A9-0B4E-4E30-97C4-92BB7768B891}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Host2VMRelay", "src\Host2VMRelay\Host2VMRelay.csproj", "{EFC53315-FCE2-4870-9E94-99FA59C7CD44}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EFC53315-FCE2-4870-9E94-99FA59C7CD44}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EFC53315-FCE2-4870-9E94-99FA59C7CD44}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EFC53315-FCE2-4870-9E94-99FA59C7CD44}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EFC53315-FCE2-4870-9E94-99FA59C7CD44}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{EFC53315-FCE2-4870-9E94-99FA59C7CD44} = {F4EE53A9-0B4E-4E30-97C4-92BB7768B891}
+	EndGlobalSection
+EndGlobal

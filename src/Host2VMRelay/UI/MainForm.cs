@@ -1,42 +1,7 @@
 using System.Security.Cryptography;
-using System.Text;
 using Renci.SshNet;
 
 namespace Host2VMRelay;
-
-internal static class Program
-{
-    [STAThread]
-    static void Main(string[] args)
-    {
-        ApplicationConfiguration.Initialize();
-        if (args.Contains("--self-test")) { SelfTest.Run(args.Last()); return; }
-        using var mutex = new Mutex(true, "Local\\KylinTunnel.Desktop", out bool first);
-        if (!first) { MessageBox.Show("应用已在运行，请从系统托盘打开。", "Host2VM Relay"); return; }
-        try
-        {
-            if (args.Contains("--smoke")) Settings.Folder = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(args.Last()))!, "smoke-settings");
-            using var form = new MainForm();
-            if (args.Contains("--smoke"))
-            {
-                form.Shown += async (_, _) => {
-                    await Task.Delay(500);
-                    form.CaptureTabs(args.Last());
-                    form.ExitForTest();
-                };
-            }
-            Application.Run(form);
-        }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "启动失败", MessageBoxButtons.OK, MessageBoxIcon.Error); }
-    }
-}
-
-public static class SecretStore
-{
-    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("KylinTunnel/v1");
-    public static string Protect(string value) => Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(value), Entropy, DataProtectionScope.CurrentUser));
-    public static string Unprotect(string value) => value.Length == 0 ? "" : Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(value), Entropy, DataProtectionScope.CurrentUser));
-}
 
 public sealed class MainForm : Form
 {
@@ -232,37 +197,4 @@ public sealed class MainForm : Form
         if (keyControls != null) keyControls.Enabled = !connected && !busy && auth.SelectedIndex == 1;
     }
     private void Stop() { if (busy) return; wanted = false; Cleanup(); SetConnectionControls(false); state.Text = "● 已断开"; state.ForeColor = Color.DimGray; Log("已断开隧道，规则服务继续运行。"); }
-}
-
-internal static class SelfTest
-{
-    public static void Run(string output)
-    {
-        var lines = new List<string>();
-        try {
-            void Check(bool ok, string message) { if (!ok) throw new Exception(message); lines.Add("PASS " + message); }
-            lines.Add("INFO Architecture: " + System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture);
-            var runtimeModule = System.Diagnostics.Process.GetCurrentProcess().Modules.Cast<System.Diagnostics.ProcessModule>().FirstOrDefault(m => m.ModuleName.Equals("coreclr.dll", StringComparison.OrdinalIgnoreCase));
-            lines.Add("INFO Runtime module: " + runtimeModule?.FileName);
-            var compiled = Rules.Compile("code.example.com\n*.example.com\n10.20.30.40\n10.20.30.0/24\n2001:db8::1\n# comment\ncode.example.com");
-            Check(compiled.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 5, "rule normalization and deduplication");
-            Check(compiled.Contains("DOMAIN-SUFFIX,example.com") && compiled.Contains("IP-CIDR6,2001:db8::1/128,no-resolve"), "suffix and IPv6 rules");
-            foreach (var invalid in new[] { "https://code.example.com/", "1.2.3.4/33", "a.com,DIRECT", "999.999.999.999", "a b.com" }) {
-                bool rejected = false; try { Rules.Compile(invalid); } catch (FormatException) { rejected = true; } Check(rejected, "reject " + invalid);
-            }
-            var encrypted = SecretStore.Protect("test-password-中文"); Check(!encrypted.Contains("test-password") && SecretStore.Unprotect(encrypted) == "test-password-中文", "DPAPI password roundtrip");
-            var path = Path.Combine(Path.GetTempPath(), "KylinTunnelTest-" + Guid.NewGuid()); var original = Settings.Folder;
-            try { Settings.Folder = path; new Settings { ProtectedSecret = encrypted }.Save(); Check(Settings.Load().ProtectedSecret == encrypted && !File.ReadAllText(Path.Combine(path, "settings.json")).Contains("test-password"), "settings persist ciphertext only"); } finally { Settings.Folder = original; Directory.Delete(path, true); }
-            using var server = new RuleServer(0) { Payload = compiled }; server.Start();
-            var baseUrl = "http://127.0.0.1:" + server.Port;
-            using var http = new HttpClient(new HttpClientHandler { UseProxy = false });
-            Check(http.GetStringAsync(baseUrl + "/rules.txt").GetAwaiter().GetResult() == compiled, "HTTP rule provider payload");
-            server.Payload = Rules.Compile("new.example.com"); Check(http.GetStringAsync(baseUrl + "/rules.txt").GetAwaiter().GetResult().Contains("new.example.com"), "rule updates served live");
-            Check(http.GetAsync(baseUrl + "/other").GetAwaiter().GetResult().StatusCode == System.Net.HttpStatusCode.NotFound, "HTTP unknown path rejected");
-            Check(ClashScript.Generate(1080, "192.168.50.8").Contains("IP-CIDR,192.168.50.8/32,DIRECT"), "custom VM IPv4 bypass");
-            Check(ClashScript.Generate(1080, "fd00::8").Contains("IP-CIDR6,fd00::8/128,DIRECT"), "custom VM IPv6 bypass");
-            Check(ClashScript.Generate(1081).Contains("port: 1081") && !ClashScript.Generate(1081).Contains("__SOCKS_PORT__"), "script port generation");
-            File.WriteAllText(output, string.Join(Environment.NewLine, lines));
-        } catch (Exception ex) { lines.Add("FAIL " + ex); File.WriteAllText(output, string.Join(Environment.NewLine, lines)); Environment.ExitCode = 1; }
-    }
 }

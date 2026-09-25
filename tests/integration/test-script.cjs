@@ -2,7 +2,7 @@ const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert');
 const path = require('path');
-const source = fs.readFileSync(path.join(__dirname, 'Core.cs'), 'utf8').split('private const string Template = """')[1].split('""";')[0].replaceAll('__SOCKS_PORT__', '1080').replaceAll('__VM_CIDR__','192.168.229.10/32').replaceAll('__VM_RULE_TYPE__','IP-CIDR');
+const source = fs.readFileSync(path.join(__dirname, '../../src/Host2VMRelay/Integration/ClashScript.cs'), 'utf8').split('private const string Template = """')[1].split('""";')[0].replaceAll('__SOCKS_PORT__', '1080').replaceAll('__VM_CIDR__','192.168.229.10/32').replaceAll('__VM_RULE_TYPE__','IP-CIDR');
 const context = vm.createContext({}); vm.runInContext(source, context);
 for (const mode of ['blacklist', 'whitelist', 'rule']) {
   const config = {proxies:[{name:'old',type:'mieru',udp:false}], rules:['MATCH,DIRECT'], dns:{'fake-ip-filter-mode':mode,'fake-ip-filter':mode==='rule'?['DOMAIN,old.example,real-ip','MATCH,fake-ip']:['+.lan','*.local','exact.example']}};

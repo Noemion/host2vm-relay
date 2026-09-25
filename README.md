@@ -52,4 +52,6 @@ code.example.com
 - 使用期间保持虚拟机、所需 VPN、Clash 和本应用运行。
 - 当前仅转发 TCP，适用于网页和 SSH，不支持 UDP。
 
-更多安装、构建和兼容性信息见 [部署说明](DEPLOYMENT.md)，测试范围见 [验证记录](VALIDATION.md)。
+更多安装、构建和兼容性信息见 [部署说明](docs/DEPLOYMENT.md)，测试范围见 [验证记录](docs/VALIDATION.md)。
+
+源码目录与开发步骤见 [开发指南](docs/DEVELOPMENT.md)。

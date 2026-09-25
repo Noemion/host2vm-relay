@@ -29,10 +29,10 @@ Clash Verge/Mihomo、虚拟机和 VPN 是外部网络环境，不随应用安装
 构建机需要 .NET 8 SDK 和 Inno Setup 7；首次 NuGet 还原需要网络。安装后的用户电脑不需要这些工具。
 
 ```powershell
-.\build-release.ps1 -Iscc 'C:\Program Files\Inno Setup 7\ISCC.exe'
+.\scripts\build-release.ps1 -Iscc 'C:\Program Files\Inno Setup 7\ISCC.exe'
 ```
 
-也可用 `-DotNet` 指定 SDK 路径，用 `-OutputDirectory` 指定输出目录；`-SkipInstaller` 仅生成三种架构的便携包。发布选项固定在 `Properties/PublishProfiles/Standalone.pubxml` 中。
+也可用 `-DotNet` 指定 SDK 路径，用 `-OutputDirectory` 指定输出目录；`-SkipInstaller` 仅生成三种架构的便携包。发布选项固定在 `src/Host2VMRelay/Properties/PublishProfiles/Standalone.pubxml` 中。
 
 GitHub Actions 在 main 分支构建成功后，为尚未发布的项目版本创建Release，并上传安装包、便携包及校验文件。已存在的同版本 Release 不会被覆盖；发布新版本前需更新项目和安装脚本中的版本号。
 

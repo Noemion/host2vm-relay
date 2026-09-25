@@ -2,11 +2,12 @@
 param(
     [string]$DotNet = 'dotnet',
     [string]$Iscc = 'ISCC.exe',
-    [string]$OutputDirectory = (Join-Path $PSScriptRoot 'artifacts'),
+    [string]$OutputDirectory = (Join-Path (Split-Path $PSScriptRoot -Parent) 'artifacts'),
     [switch]$SkipInstaller
 )
 $ErrorActionPreference = 'Stop'
-$project = Join-Path $PSScriptRoot 'Host2VMRelay.csproj'
+$repoRoot = Split-Path $PSScriptRoot -Parent
+$project = Join-Path $repoRoot 'src/Host2VMRelay/Host2VMRelay.csproj'
 $publishRoot = Join-Path $OutputDirectory 'publish'
 $releaseRoot = Join-Path $OutputDirectory 'release'
 New-Item -ItemType Directory -Force $publishRoot,$releaseRoot | Out-Null
@@ -20,13 +21,14 @@ foreach ($rid in @('win-x64','win-x86','win-arm64')) {
 }
 $common = Join-Path $publishRoot 'common'
 New-Item -ItemType Directory -Force $common | Out-Null
-Copy-Item (Join-Path $PSScriptRoot 'licenses') $common -Recurse -Force
-foreach ($doc in @('README.md','DEPLOYMENT.md','CHANGELOG.md','VALIDATION.md')) { Copy-Item (Join-Path $PSScriptRoot $doc) $common -Force }
+Copy-Item (Join-Path $repoRoot 'licenses') $common -Recurse -Force
+Copy-Item (Join-Path $repoRoot 'docs') $common -Recurse -Force
+foreach ($doc in @('README.md','CHANGELOG.md')) { Copy-Item (Join-Path $repoRoot $doc) $common -Force }
 foreach ($rid in @('win-x64','win-x86','win-arm64')) {
     Compress-Archive -Path (Join-Path $publishRoot "$rid\Host2VMRelay.exe"), (Join-Path $common '*') -DestinationPath (Join-Path $releaseRoot "Host2VMRelay-0.2.0-$rid-Portable.zip") -Force
 }
 if (!$SkipInstaller) {
-    & $Iscc "/DPayloadRoot=$publishRoot" "/DOutputRoot=$releaseRoot" (Join-Path $PSScriptRoot 'installer\Host2VMRelay.iss')
+    & $Iscc "/DPayloadRoot=$publishRoot" "/DOutputRoot=$releaseRoot" (Join-Path $repoRoot 'packaging/windows/Host2VMRelay.iss')
     if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
 }
 Get-ChildItem $releaseRoot -File | Where-Object Extension -in '.exe','.zip' | Get-FileHash -Algorithm SHA256 |

@@ -1,8 +1,8 @@
 #ifndef PayloadRoot
-  #define PayloadRoot "..\artifacts\publish"
+  #define PayloadRoot "..\..\artifacts\publish"
 #endif
 #ifndef OutputRoot
-  #define OutputRoot "..\artifacts\release"
+  #define OutputRoot "..\..\artifacts\release"
 #endif
 #define AppVersion "0.2.0"
 
