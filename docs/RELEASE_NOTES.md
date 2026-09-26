@@ -1,10 +1,10 @@
-# Host2VM Relay v0.2.1
+# Host2VMRelay v0.3.0
 
 A Windows desktop app that transparently routes selected host requests through a virtual machine using SSH tunnels and domain/IP rules, with Clash TUN integration.
 
 ## Downloads
 
-- **[Download Windows installer](https://github.com/Noemion/host2vm-relay/releases/download/v0.2.1/Host2VMRelay-0.2.1-Setup.exe)** — recommended offline installer; automatically selects x64, x86, or ARM64. Includes the .NET desktop runtime and application dependencies.
+- **[Download Windows installer](https://github.com/Noemion/host2vm-relay/releases/download/v0.3.0/Host2VMRelay-0.3.0-Setup.exe)** — recommended offline installer; automatically selects x64, x86, or ARM64. Includes the .NET desktop runtime and application dependencies.
 - **win-x64 / win-x86 / win-arm64 Portable.zip** — portable packages for the specified architecture.
 - **SHA256SUMS.txt** — checksums for all installer and portable assets.
 
@@ -12,15 +12,18 @@ No preinstalled .NET, Python, Node.js, OpenSSH client, compiler, or network down
 
 ## Changes in this release
 
-- Clean source layout and consistent Host2VM Relay application identifiers.
-- Remove prototype settings migration. Previously saved secrets must be entered again.
+- Use a local Clash file provider so Clash stays quiet when Host2VMRelay is not running.
+- Store user configuration under Documents\\Host2VMRelay and migrate the previous LocalAppData settings on first use.
+- Route local build output to artifacts/ and add a root PowerShell build entry point.
+- Uninstall an existing installation before installing the new version.
+- Use the compact Host2VMRelay application name consistently.
 
 ## Features
 
 - Password and private-key SSH authentication.
 - Windows DPAPI encrypted credential storage.
 - Tray operation and automatic reconnection.
-- Domain, IP and CIDR rules with a local rule feed for Clash Verge.
+- Domain, IP and CIDR rules with a local file provider for Clash Verge.
 - Fake-IP DNS integration for selected domains.
 
 ## Requirements and validation
