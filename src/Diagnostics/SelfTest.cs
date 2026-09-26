@@ -33,9 +33,11 @@ internal static class SelfTest
                 new Settings { ProtectedSecret = encrypted }.Save();
                 Check(Settings.Load().ProtectedSecret == encrypted && !File.ReadAllText(Path.Combine(Settings.Folder, "settings.json")).Contains("test-password"), "settings persist ciphertext only");
                 ClashRuleFile.Disable();
-                Check(File.ReadAllText(ClashRuleFile.FilePath) == ClashRuleFile.DisabledPayload, "disabled local rule file");
+                Check(File.ReadAllText(ClashRuleFile.FilePath) == ClashRuleFile.DisabledPayload && File.ReadAllText(ClashRuleFile.UdpFilePath) == ClashRuleFile.DisabledPayload, "both local rule files start disabled");
                 ClashRuleFile.Write(compiled);
-                Check(File.ReadAllText(ClashRuleFile.FilePath) == compiled, "local rule update");
+                Check(File.ReadAllText(ClashRuleFile.FilePath) == compiled && File.ReadAllText(ClashRuleFile.UdpFilePath) == ClashRuleFile.DisabledPayload, "TCP rule updates do not enable UDP before its channel is healthy");
+                ClashRuleFile.WriteUdp(compiled);
+                Check(File.ReadAllText(ClashRuleFile.UdpFilePath) == compiled, "independent UDP rule update");
                 var timestamp = File.GetLastWriteTimeUtc(ClashRuleFile.FilePath);
                 ClashRuleFile.Write(compiled);
                 Check(File.GetLastWriteTimeUtc(ClashRuleFile.FilePath) == timestamp, "unchanged rules are not rewritten");
@@ -45,7 +47,7 @@ internal static class SelfTest
                 Settings.Folder = originalSettings; ClashRuleFile.Folder = originalRules;
                 if (Directory.Exists(root)) Directory.Delete(root, true);
             }
-            foreach (int size in new[] { 16, 20, 24, 32, 40, 48, 64, 128, 256 })
+            foreach (int size in new[] { 16, 20, 24, 28, 32, 40, 48, 56, 64, 128, 256 })
             {
                 using var icon = AppIcon.Load(size);
                 Check(icon.Width == size && icon.Height == size, "embedded application icon " + size);
@@ -64,11 +66,12 @@ internal static class SelfTest
             Check(second == ClashScript.Generate(1081, "fd00::8", original), "regeneration replaces wrapper rather than nesting");
             Check(ScriptComposer.ExtractOriginal(first.Replace("\n", "\r\n")) == original, "CRLF envelope roundtrip");
             bool badMarker = false;
-            try { ScriptComposer.ExtractOriginal(first.Replace("original-length: ", "original-length: x")); } catch (FormatException) { badMarker = true; }
+            try { ScriptComposer.ExtractOriginal(first.Replace("managed-sha256: ", "managed-sha256: x")); } catch (FormatException) { badMarker = true; }
             Check(badMarker, "reject damaged generated markers");
             bool tooLarge = false;
             try { ClashScript.Generate(1080, existingScript: new string('x', ScriptComposer.MaxSourceLength + 1)); } catch (ArgumentException) { tooLarge = true; }
             Check(tooLarge, "reject oversized source");
+            UpdateSelfTest.Run(output, Check);
             ExportScriptCases(Path.Combine(Path.GetDirectoryName(output)!, "script-cases.json"));
             lines.Add("PASS actual C# generated scripts exported for JavaScript execution checks");
             File.WriteAllText(output, string.Join(Environment.NewLine, lines));
@@ -78,7 +81,6 @@ internal static class SelfTest
             lines.Add("FAIL " + ex); File.WriteAllText(output, string.Join(Environment.NewLine, lines)); Environment.ExitCode = 1;
         }
     }
-
     private static void ExportScriptCases(string path)
     {
         var cases = new Dictionary<string, string?>

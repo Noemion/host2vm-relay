@@ -11,12 +11,15 @@
     <Description>Selective host-to-VM forwarding through SSH and Clash TUN.</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AppIconPath>$(MSBuildThisFileDirectory)..\artifacts\assets\Host2VMRelay.ico</AppIconPath>
+    <SetupIconPath>$(MSBuildThisFileDirectory)..\artifacts\assets\Host2VMRelay.Setup.ico</SetupIconPath>
     <ApplicationIcon>$(AppIconPath)</ApplicationIcon>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <NuGetLockFilePath>$(BaseIntermediateOutputPath)packages.lock.json</NuGetLockFilePath>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../tests/fixtures/legacy-v050.template.js" LogicalName="Host2VMRelay.Legacy050" />
+    <EmbeddedResource Include="Networking/udp_bridge.py" LogicalName="Host2VMRelay.UdpBridge" />
     <EmbeddedResource Include="$(AppIconPath)" LogicalName="Host2VMRelay.AppIcon" />
     <PackageReference Include="SSH.NET" Version="2026.0.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
@@ -25,5 +28,10 @@
           Inputs="$(MSBuildProjectDirectory)\Assets\Host2VMRelay.svg;$(MSBuildProjectDirectory)\..\scripts\build-icon.ps1"
           Outputs="$(AppIconPath)">
     <Exec Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\scripts\build-icon.ps1&quot; -SourcePath &quot;$(MSBuildProjectDirectory)\Assets\Host2VMRelay.svg&quot; -OutputPath &quot;$(AppIconPath)&quot;" />
+  </Target>
+  <Target Name="GenerateSetupIcon" BeforeTargets="PrepareForBuild" DependsOnTargets="GenerateApplicationIcon"
+          Inputs="$(AppIconPath);$(MSBuildProjectDirectory)\..\scripts\build-setup-icon.ps1"
+          Outputs="$(SetupIconPath)">
+    <Exec Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\scripts\build-setup-icon.ps1&quot; -SourcePath &quot;$(AppIconPath)&quot; -OutputPath &quot;$(SetupIconPath)&quot;" />
   </Target>
 </Project>

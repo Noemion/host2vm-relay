@@ -44,7 +44,7 @@ internal sealed class UiAcceptance
         int actual = checked((int)GetDpiForWindow(form.Handle));
         Check(AreDpiAwarenessContextsEqual(GetWindowDpiAwarenessContext(form.Handle), new IntPtr(-4)), "window is PerMonitorV2 aware");
         Check(actual > 0 && form.DeviceDpi == actual, "startup managed DPI matches the native window DPI");
-        Check(form.Font.SizeInPoints >= 11.5F, "readable base font at startup");
+        Check(form.Font.SizeInPoints >= UiLayout.BaseFontPoints - .1F, "readable base font at startup");
         stages.Add(new { Stage = stage, Method = "native-startup", NativeDpi = actual, ManagedDpi = form.DeviceDpi,
             Monitor = Screen.FromHandle(form.Handle).DeviceName, WorkArea = Screen.FromHandle(form.Handle).WorkingArea.ToString(),
             Windows = Environment.OSVersion.ToString(), Runtime = Environment.Version.ToString() });
@@ -194,8 +194,6 @@ internal sealed class UiAcceptance
     }
     private void Screenshot(Form form, string name)
     {
-        // DrawToBitmap re-renders scrolled native child windows outside their clip
-        // region. Capture the painted desktop instead of accepting that reconstruction.
         form.Refresh(); Application.DoEvents(); Thread.Sleep(80);
         using var bitmap = new Bitmap(form.Width, form.Height);
         using (var graphics = Graphics.FromImage(bitmap))

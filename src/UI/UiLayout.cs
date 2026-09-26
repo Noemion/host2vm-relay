@@ -4,8 +4,9 @@ namespace Host2VMRelay;
 
 internal static class UiLayout
 {
-    public static Font BodyFont() => new("Microsoft YaHei UI", 12F, FontStyle.Regular, GraphicsUnit.Point);
-    public static Font CodeFont() => new("Consolas", 12F, FontStyle.Regular, GraphicsUnit.Point);
+    public const float BaseFontPoints = 12F * UiTheme.ContentScale;
+    public static Font BodyFont() => new("Microsoft YaHei UI", BaseFontPoints, FontStyle.Regular, GraphicsUnit.Point);
+    public static Font CodeFont() => new("Consolas", BaseFontPoints, FontStyle.Regular, GraphicsUnit.Point);
     private static readonly ConditionalWeakTable<Form, ExplicitFonts> fontTrackers = new();
     private sealed class ExplicitFonts
     {
@@ -39,8 +40,6 @@ internal static class UiLayout
                 if (owned.Remove(spec.Control, out var previous)) previous.Dispose();
                 owned[spec.Control] = next;
             }
-            // Borderless native edits can round their automatic height down at 125%.
-            // Size the line from actual font metrics, not an additional DPI multiplier.
             foreach (var input in singleLineInputs)
             {
                 if (input.IsDisposed) continue;
@@ -49,18 +48,18 @@ internal static class UiLayout
             }
         }
     }
-    public static ActionButton Button(string text, int minimumWidth = 100) => new() { Text = text, AccessibleName = text, MinimumSize = new Size(minimumWidth, 42) };
+    public static ActionButton Button(string text, int minimumWidth = 100) => new() { Text = text, AccessibleName = text, MinimumSize = UiTheme.Size(minimumWidth, 42) };
     public static ActionButton Primary(string text, int minimumWidth = 140) { var button = Button(text, minimumWidth); button.Primary = true; return button; }
     public static Label Help(string text) => new()
     {
         Text = text, AutoSize = true, Dock = DockStyle.Top, ForeColor = UiTheme.Muted,
-        MaximumSize = new Size(760, 0), Margin = new Padding(0, 3, 0, 10)
+        MaximumSize = UiTheme.Size(760, 0), Margin = UiTheme.Spacing(0, 3, 0, 10)
     };
     public static Label Heading(string text, float points = 14)
     {
         var label = Help(text); label.ForeColor = UiTheme.Ink;
-        label.Font = new Font("Microsoft YaHei UI", points, FontStyle.Bold, GraphicsUnit.Point);
-        label.Margin = new Padding(0, 0, 0, 10); return label;
+        label.Font = new Font("Microsoft YaHei UI", points * UiTheme.ContentScale, FontStyle.Bold, GraphicsUnit.Point);
+        label.Margin = UiTheme.Spacing(0, 0, 0, 10); return label;
     }
     public static TableLayoutPanel Stack()
     {
@@ -81,29 +80,29 @@ internal static class UiLayout
     }
     public static TableLayoutPanel Field(string title, Control control, string? hint = null, bool frame = true)
     {
-        var field = Stack(); field.Margin = new Padding(0, 4, 0, 14);
-        var caption = Help(title); caption.ForeColor = UiTheme.Ink; caption.Margin = new Padding(0, 0, 0, 7);
+        var field = Stack(); field.Margin = UiTheme.Spacing(0, 4, 0, 14);
+        var caption = Help(title); caption.ForeColor = UiTheme.Ink; caption.Margin = UiTheme.Spacing(0, 0, 0, 7);
         control.AccessibleName = title; Add(field, caption); Add(field, frame ? new EntryFrame(control) : control);
         if (!string.IsNullOrEmpty(hint)) Add(field, Help(hint)); return field;
     }
     public static TableLayoutPanel Pair(Control left, Control right, float leftPercent = 50)
     {
-        var table = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 0, 0, 12) };
+        var table = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 2, RowCount = 1, Margin = UiTheme.Spacing(0, 0, 0, 12) };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, leftPercent)); table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100 - leftPercent));
         table.RowStyles.Add(new RowStyle(SizeType.AutoSize)); left.Dock = right.Dock = DockStyle.Top;
-        left.Margin = new Padding(0, 0, 8, 0); right.Margin = new Padding(8, 0, 0, 0);
+        left.Margin = UiTheme.Spacing(0, 0, 8, 0); right.Margin = UiTheme.Spacing(8, 0, 0, 0);
         table.Controls.Add(left, 0, 0); table.Controls.Add(right, 1, 0); return table;
     }
     public static FlowLayoutPanel Actions(params Control[] controls)
     {
-        var flow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true, Margin = new Padding(0, 6, 0, 0) };
+        var flow = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, WrapContents = true, Margin = UiTheme.Spacing(0, 6, 0, 0) };
         foreach (var control in controls) flow.Controls.Add(control); return flow;
     }
     public static EntryFrame Editor(TextBox editor, int height = 240, bool readOnly = false)
     {
         editor.Multiline = true; editor.ReadOnly = readOnly; editor.AcceptsReturn = true;
         editor.WordWrap = false; editor.ScrollBars = ScrollBars.Both; editor.Font = CodeFont();
-        editor.MinimumSize = new Size(0, 96); editor.HideSelection = false;
+        editor.MinimumSize = UiTheme.Size(0, 96); editor.HideSelection = false;
         return new EntryFrame(editor, true, height);
     }
     public static void WrapLabels(TableLayoutPanel table)
@@ -131,8 +130,8 @@ internal static class UiLayout
         if (form.IsDisposed) return;
         fontTrackers.GetValue(form, f => new ExplicitFonts(f)).Apply();
         if (form.WindowState != FormWindowState.Normal) return;
-        Rectangle area = Screen.FromHandle(form.Handle).WorkingArea; int dpi = form.DeviceDpi;
-        form.MinimumSize = new Size(Math.Min(logicalMinimum.Width * dpi / 96, area.Width), Math.Min(logicalMinimum.Height * dpi / 96, area.Height));
+        Rectangle area = Screen.FromHandle(form.Handle).WorkingArea;
+        form.MinimumSize = new Size(Math.Min(UiTheme.Px(form, logicalMinimum.Width), area.Width), Math.Min(UiTheme.Px(form, logicalMinimum.Height), area.Height));
         int width = Math.Min(form.Width, area.Width), height = Math.Min(form.Height, area.Height);
         form.Bounds = new Rectangle(Math.Clamp(form.Left, area.Left, area.Right - width), Math.Clamp(form.Top, area.Top, area.Bottom - height), width, height);
     }

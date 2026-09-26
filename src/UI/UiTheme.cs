@@ -4,6 +4,20 @@ namespace Host2VMRelay;
 
 internal static class UiTheme
 {
+    public const float ContentScale = 0.8F;
+    public const float SpacingScale = 0.6F;
+    public static int Units(int logical) => (int)Math.Round(logical * ContentScale, MidpointRounding.AwayFromZero);
+    public static System.Drawing.Size Size(int width, int height) => new(Units(width), Units(height));
+    public static Padding Spacing(params int[] values)
+    {
+        int S(int n) => (int)Math.Round(n * SpacingScale, MidpointRounding.AwayFromZero);
+        return values.Length switch
+        {
+            1 => new Padding(S(values[0])),
+            4 => new Padding(S(values[0]), S(values[1]), S(values[2]), S(values[3])),
+            _ => throw new ArgumentException("Spacing needs one or four values.")
+        };
+    }
     public static Color Canvas => SystemInformation.HighContrast ? SystemColors.Window : Color.FromArgb(246, 247, 249);
     public static Color Sidebar => SystemInformation.HighContrast ? SystemColors.Control : Color.FromArgb(236, 239, 241);
     public static Color Surface => SystemInformation.HighContrast ? SystemColors.Window : Color.White;
@@ -13,7 +27,7 @@ internal static class UiTheme
     public static Color Line => SystemInformation.HighContrast ? SystemColors.WindowText : Color.FromArgb(222, 227, 230);
     public static Color Accent => SystemInformation.HighContrast ? SystemColors.Highlight : Color.FromArgb(24, 105, 86);
     public static Color Selection => SystemInformation.HighContrast ? SystemColors.Highlight : Color.FromArgb(216, 231, 225);
-    public static int Px(Control control, int logical) => (int)Math.Round(logical * (control.FindForm()?.DeviceDpi ?? control.DeviceDpi) / 96.0);
+    public static int Px(Control control, int logical) => (int)Math.Round(logical * ContentScale * (control.FindForm()?.DeviceDpi ?? control.DeviceDpi) / 96.0);
     public static GraphicsPath Round(RectangleF rectangle, float radius)
     {
         var path = new GraphicsPath();
@@ -34,7 +48,7 @@ internal class CardPanel : TableLayoutPanel
         DoubleBuffered = true; SetStyle(ControlStyles.ResizeRedraw, true);
         AutoSize = true; AutoSizeMode = AutoSizeMode.GrowAndShrink; Dock = DockStyle.Top;
         ColumnCount = 1; ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        Padding = new Padding(22); Margin = new Padding(0, 0, 0, 18);
+        Padding = UiTheme.Spacing(22); Margin = UiTheme.Spacing(0, 0, 0, 18);
         BackColor = UiTheme.Surface; ForeColor = UiTheme.Ink;
     }
     protected override void OnPaintBackground(PaintEventArgs e)
@@ -54,10 +68,10 @@ internal sealed class EntryFrame : TableLayoutPanel
         this.editor = editor; DoubleBuffered = true; SetStyle(ControlStyles.ResizeRedraw, true);
         ColumnCount = 1; RowCount = 1; ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         RowStyles.Add(new RowStyle(multiline ? SizeType.Percent : SizeType.AutoSize, 100));
-        Dock = DockStyle.Top; Margin = Padding.Empty; Padding = new Padding(12, 10, 12, 10);
+        Dock = DockStyle.Top; Margin = Padding.Empty; Padding = UiTheme.Spacing(12, 10, 12, 10);
         BackColor = UiTheme.Field; AutoSize = !multiline;
-        if (multiline) { Height = editorHeight; MinimumSize = new Size(0, editorHeight); }
-        else { AutoSizeMode = AutoSizeMode.GrowAndShrink; MinimumSize = new Size(0, 44); }
+        if (multiline) { Height = UiTheme.Units(editorHeight); MinimumSize = UiTheme.Size(0, editorHeight); }
+        else { AutoSizeMode = AutoSizeMode.GrowAndShrink; MinimumSize = UiTheme.Size(0, 44); }
         editor.Margin = Padding.Empty; editor.BackColor = UiTheme.Field; editor.ForeColor = UiTheme.Ink;
         if (editor is TextBox text) text.BorderStyle = BorderStyle.None;
         if (editor is NumericUpDown number) number.BorderStyle = BorderStyle.None;
@@ -87,7 +101,7 @@ internal class ActionButton : Button
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0;
         AutoSize = true; AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        MinimumSize = new Size(100, 42); Padding = new Padding(16, 8, 16, 8); Margin = new Padding(0, 4, 10, 4); Cursor = Cursors.Hand;
+        MinimumSize = UiTheme.Size(100, 42); Padding = UiTheme.Spacing(16, 8, 16, 8); Margin = UiTheme.Spacing(0, 4, 10, 4); Cursor = Cursors.Hand;
         UseVisualStyleBackColor = false; BackColor = UiTheme.Surface; ForeColor = UiTheme.Ink;
     }
     public override Size GetPreferredSize(Size proposedSize)
@@ -139,7 +153,7 @@ internal sealed class NavigationButton : ActionButton
             Invalidate();
         }
     }
-    public NavigationButton() { MinimumSize = new Size(150, 46); Padding = new Padding(38, 10, 14, 10); }
+    public NavigationButton() { MinimumSize = UiTheme.Size(150, 46); Padding = UiTheme.Spacing(38, 10, 14, 10); }
     protected override Color FillColor => Selected ? UiTheme.Selection : Hot ? UiTheme.Field : UiTheme.Sidebar;
     protected override Color BorderColor => FillColor;
     protected override Color TextColor => Selected ? UiTheme.Accent : UiTheme.Muted;
@@ -164,17 +178,28 @@ internal sealed class NavigationButton : ActionButton
             graphics.DrawLine(pen, x, y + s * .3F, x + s, y + s * .3F); graphics.DrawLine(pen, x + s * .7F, y, x + s, y + s * .3F);
             graphics.DrawLine(pen, x, y + s * .7F, x + s, y + s * .7F); graphics.DrawLine(pen, x, y + s * .7F, x + s * .3F, y + s);
         }
-        else
+        else if (PageIndex == 3)
         {
             graphics.DrawRectangle(pen, x, y, s, s); graphics.DrawLine(pen, x + s * .2F, y + s * .3F, x + s * .4F, y + s * .5F);
             graphics.DrawLine(pen, x + s * .4F, y + s * .5F, x + s * .2F, y + s * .7F); graphics.DrawLine(pen, x + s * .55F, y + s * .7F, x + s * .8F, y + s * .7F);
+        }
+        else
+        {
+            graphics.DrawEllipse(pen, x + s * .2F, y + s * .2F, s * .6F, s * .6F);
+            graphics.DrawEllipse(pen, x + s * .4F, y + s * .4F, s * .2F, s * .2F);
+            for (int i = 0; i < 8; i++)
+            {
+                double a = i * Math.PI / 4;
+                graphics.DrawLine(pen, x + s * (.5F + .3F * (float)Math.Cos(a)), y + s * (.5F + .3F * (float)Math.Sin(a)),
+                    x + s * (.5F + .48F * (float)Math.Cos(a)), y + s * (.5F + .48F * (float)Math.Sin(a)));
+            }
         }
     }
 }
 
 internal sealed class StatusBadge : Label
 {
-    public StatusBadge() { AutoSize = true; Padding = new Padding(12, 6, 12, 6); Margin = Padding.Empty; }
+    public StatusBadge() { AutoSize = true; Padding = UiTheme.Spacing(12, 6, 12, 6); Margin = Padding.Empty; }
     protected override void OnPaintBackground(PaintEventArgs e)
     {
         if (SystemInformation.HighContrast) { base.OnPaintBackground(e); return; }

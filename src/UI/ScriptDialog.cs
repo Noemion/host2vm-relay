@@ -6,11 +6,11 @@ namespace Host2VMRelay;
 internal sealed class ScriptDialog : Form
 {
     private readonly Func<string?, string> generate;
-    private readonly CheckBox merge = new() { Text = "合并已有脚本", AutoSize = true };
+    private readonly CheckBox merge = new() { Text = "合并 / 更新旧脚本", AutoSize = true };
     private readonly TextBox source = new() { Name = "originalScript", AccessibleName = "原始脚本" }, output = new() { Name = "generatedScript", AccessibleName = "完整脚本预览" };
     private readonly Button import = UiLayout.Button("导入脚本…", 130), copy = UiLayout.Button("复制", 70), save = UiLayout.Button("另存为", 90);
-    private readonly Label status = UiLayout.Help("先生成完整脚本，再复制或保存。"), introduction = UiLayout.Help("保留原有逻辑，生成可直接粘贴的完整配置。");
-    private readonly Panel viewport = new() { Dock = DockStyle.Fill, AutoScroll = true, Margin = new Padding(0, 12, 0, 12) };
+    private readonly Label status = UiLayout.Help("先生成完整脚本，再复制或保存。"), introduction = UiLayout.Help("支持旧版完整脚本增量更新：保留用户区，只替换托管区。");
+    private readonly Panel viewport = new() { Dock = DockStyle.Fill, AutoScroll = true, Margin = UiTheme.Spacing(0, 12, 0, 12) };
     private readonly TableLayoutPanel editors = new() { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = Padding.Empty };
     private readonly CardPanel originalCard, generatedCard;
     private readonly EntryFrame originalFrame, generatedFrame;
@@ -25,14 +25,14 @@ internal sealed class ScriptDialog : Form
         this.generate = generate; SuspendLayout(); DoubleBuffered = true;
         Font = UiLayout.BodyFont(); ForeColor = UiTheme.Ink; BackColor = UiTheme.Canvas;
         AutoScaleDimensions = new SizeF(96F, 96F); AutoScaleMode = AutoScaleMode.Dpi;
-        Text = "Host2VMRelay — 脚本工作区"; ClientSize = new Size(1080, 780); MinimumSize = new Size(680, 520);
+        Text = "Host2VMRelay — 脚本工作区"; ClientSize = UiTheme.Size(1080, 780); MinimumSize = UiTheme.Size(680, 520);
         StartPosition = FormStartPosition.CenterParent; UpdateIcon(96);
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(22), Margin = Padding.Empty };
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = UiTheme.Spacing(22), Margin = Padding.Empty };
         chrome = root; root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (int i = 0; i < 5; i++) root.RowStyles.Add(new RowStyle(i == 2 ? SizeType.Percent : SizeType.AutoSize, i == 2 ? 100 : 0));
         var header = UiLayout.Stack(); UiLayout.Add(header, UiLayout.Heading("脚本工作区", 22)); UiLayout.Add(header, introduction); root.Controls.Add(header, 0, 0);
-        merge.Margin = new Padding(0, 12, 22, 6); root.Controls.Add(UiLayout.Actions(merge, import), 0, 1);
-        source.MaxLength = ScriptComposer.MaxSourceLength + 32768; source.AcceptsTab = true;
+        merge.Margin = UiTheme.Spacing(0, 12, 22, 6); root.Controls.Add(UiLayout.Actions(merge, import), 0, 1);
+        source.MaxLength = ScriptComposer.MaxGeneratedLength; source.AcceptsTab = true;
         originalFrame = UiLayout.Editor(source, 260); generatedFrame = UiLayout.Editor(output, 260, true);
         originalCard = UiLayout.Card("原始脚本", "JavaScript 扩展脚本，不是 YAML 订阅。", originalFrame);
         generatedCard = UiLayout.Card("完整预览", "整体替换当前订阅的扩展脚本。", generatedFrame);
@@ -40,7 +40,7 @@ internal sealed class ScriptDialog : Form
         var compose = UiLayout.Primary("生成并复制", 140); compose.Name = "composeScript";
         var close = UiLayout.Button("关闭", 70); close.DialogResult = DialogResult.Cancel; CancelButton = close;
         root.Controls.Add(UiLayout.Actions(compose, copy, save, close), 0, 3);
-        status.Margin = new Padding(0, 8, 0, 0); root.Controls.Add(status, 0, 4); UiLayout.WrapLabels(root); Controls.Add(root);
+        status.Margin = UiTheme.Spacing(0, 8, 0, 0); root.Controls.Add(status, 0, 4); UiLayout.WrapLabels(root); Controls.Add(root);
         source.Text = WindowsLines(existingScript); merge.Checked = !string.IsNullOrWhiteSpace(existingScript);
         source.Enabled = merge.Checked; copy.Enabled = save.Enabled = false;
         merge.CheckedChanged += (_, _) => { source.Enabled = merge.Checked; InvalidateOutput(); UpdateWorkspaceLayout(); };
@@ -56,11 +56,11 @@ internal sealed class ScriptDialog : Form
         layingOut = true;
         try
         {
-            bool compact = ClientSize.Width * 96.0 / Math.Max(96, DeviceDpi) < 860 || ClientSize.Height * 96.0 / Math.Max(96, DeviceDpi) < 560;
+            bool compact = ClientSize.Width * 96.0 / Math.Max(96, DeviceDpi) < UiTheme.Units(860) || ClientSize.Height * 96.0 / Math.Max(96, DeviceDpi) < UiTheme.Units(560);
             introduction.Visible = !compact; chrome.Padding = new Padding(UiTheme.Px(this, compact ? 12 : 22));
             viewport.Margin = new Padding(0, UiTheme.Px(this, compact ? 6 : 12), 0, UiTheme.Px(this, compact ? 6 : 12));
             status.Margin = new Padding(0, UiTheme.Px(this, compact ? 4 : 8), 0, 0);
-            bool dual = merge.Checked && viewport.ClientSize.Width * 96.0 / Math.Max(96, DeviceDpi) >= 840;
+            bool dual = merge.Checked && viewport.ClientSize.Width * 96.0 / Math.Max(96, DeviceDpi) >= UiTheme.Units(840);
             editors.SuspendLayout(); int columns = dual ? 2 : 1;
             if (editors.ColumnCount != columns || originalCard.Parent is null || generatedCard.Parent is null)
             {
@@ -87,16 +87,21 @@ internal sealed class ScriptDialog : Form
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         try
         {
-            if (new FileInfo(dialog.FileName).Length > (ScriptComposer.MaxSourceLength + 32768L) * 4 + 4) throw new ArgumentException("文件过大，请选择原始扩展脚本。");
+            if (new FileInfo(dialog.FileName).Length > (long)ScriptComposer.MaxGeneratedLength * 4 + 4) throw new ArgumentException("文件过大，请选择原始扩展脚本。");
             using var reader = new StreamReader(dialog.FileName, new UTF8Encoding(false, true), true);
-            source.Text = WindowsLines(ScriptComposer.ExtractOriginal(reader.ReadToEnd())); merge.Checked = true; status.Text = "已导入原脚本，可以生成并复制。";
+            var imported = ScriptComposer.Inspect(reader.ReadToEnd());
+            source.Text = WindowsLines(imported.Original); merge.Checked = true;
+            status.Text = imported.Kind == "original" ? "原脚本已导入。" : "已识别旧版完整脚本，保留用户区并准备更新托管区。";
         }
         catch (Exception ex) { ShowError(ex); }
     }
     private void PrepareOutput()
     {
-        output.Text = WindowsLines(generate(merge.Checked ? source.Text : null)); output.Select(0, 0); output.ScrollToCaret();
-        copy.Enabled = save.Enabled = true; status.Text = "完整脚本已生成，可复制或另存为。";
+        string? input = merge.Checked ? source.Text : null;
+        var imported = ScriptComposer.Inspect(input);
+        output.Text = WindowsLines(generate(input)); output.Select(0, 0); output.ScrollToCaret();
+        copy.Enabled = save.Enabled = true;
+        status.Text = imported.Kind == "original" ? "完整脚本已生成，可复制或另存为。" : "增量更新完成：用户区已保留，托管区已替换。";
     }
     private void GenerateAndCopy() { try { PrepareOutput(); Copy(); } catch (Exception ex) { ShowError(ex); } }
     private void Copy()

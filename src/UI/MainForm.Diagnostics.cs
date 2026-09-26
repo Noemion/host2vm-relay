@@ -18,7 +18,12 @@ public sealed partial class MainForm
             audit.Check(connect.Enabled && host.Enabled, "manual reconnect controls recover after disconnection");
             audit.Check(auth.SelectedIndex != 0 || keyControls?.Enabled != true, "password mode disables private-key browse");
             wanted = false; SetConnectionControls(false);
-            audit.Check(navigationButtons.Count == 4 && tabs.TabCount == 4, "four accessible navigation destinations");
+            audit.Check(navigationButtons.Count == 5 && tabs.TabCount == 5, "five accessible navigation destinations");
+            audit.Check(Math.Abs(UiLayout.BaseFontPoints - 9.6F) < .01F && UiTheme.ContentScale == .8F, "content density is exactly 80 percent of the prior design");
+            SelectPage(4); UiAcceptance.Settle(this);
+            var folderField = tabs.TabPages[4].Controls.Find("settingsFolder", true).OfType<TextBox>().Single();
+            audit.Check(folderField.ReadOnly && folderField.Text == Settings.Folder, "settings page displays the active configuration path");
+            SelectPage(0);
             int originalAuth = auth.SelectedIndex;
             auth.SelectedIndex = 1; UiAcceptance.Settle(this);
             audit.Check(keyControls?.Enabled == true && keyPath.Visible, "private-key mode exposes the file picker");
@@ -53,7 +58,7 @@ public sealed partial class MainForm
             audit.ApplyDpi(this, audit.TargetDpi); audit.VerifyFontScaling(fonts, startDpi, audit.TargetDpi);
             audit.Check(windowIcon?.Width == 32 * audit.TargetDpi / 96, "window icon has requested pixel size");
             audit.Check(trayIcon?.Width == 16 * audit.TargetDpi / 96, "tray icon has requested pixel size");
-            bool compact = ClientSize.Width * 96.0 / DeviceDpi < 860;
+            bool compact = ClientSize.Width * 96.0 / DeviceDpi < UiTheme.Units(860);
             audit.Check(compactNavigation?.Visible == compact && sidebar?.Visible != compact, "navigation adapts without hiding destinations");
             for (int i = 0; i < tabs.TabCount; i++)
             {

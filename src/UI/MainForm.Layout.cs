@@ -6,22 +6,20 @@ public sealed partial class MainForm
 {
     private TableLayoutPanel PageContent(string title)
     {
-        var page = new TabPage(title) { BackColor = UiTheme.Canvas, Padding = new Padding(2, 2, 10, 2), AutoScroll = true };
+        var page = new TabPage(title) { BackColor = UiTheme.Canvas, Padding = UiTheme.Spacing(2, 2, 10, 2), AutoScroll = true };
         var stack = UiLayout.Stack(); stack.BackColor = UiTheme.Canvas;
         page.Controls.Add(stack); tabs.TabPages.Add(page); return stack;
     }
-
     private void BuildConnection()
     {
         var page = PageContent("连接");
         host.PlaceholderText = "例如 192.168.229.10"; user.PlaceholderText = "虚拟机登录用户名";
-        auth.Items.AddRange(new object[] { "密码登录", "私钥登录" });
-        secret.UseSystemPasswordChar = true;
+        auth.Items.AddRange(new object[] { "密码登录", "私钥登录" }); secret.UseSystemPasswordChar = true;
         var passwordField = UiLayout.Field("密码", secret);
         var keys = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Top, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
         keys.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); keys.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         keys.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var keyFrame = new EntryFrame(keyPath); keyFrame.Margin = new Padding(0, 0, 10, 0);
+        var keyFrame = new EntryFrame(keyPath); keyFrame.Margin = UiTheme.Spacing(0, 0, 10, 0);
         keyPath.AccessibleName = "私钥文件路径";
         var browse = UiLayout.Button("浏览…", 86); browse.Margin = Padding.Empty;
         browse.Click += (_, _) =>
@@ -33,8 +31,7 @@ public sealed partial class MainForm
         var keyField = UiLayout.Field("私钥文件", keys, frame: false);
         auth.SelectedIndexChanged += (_, _) =>
         {
-            keyField.Visible = auth.SelectedIndex == 1;
-            keys.Enabled = auth.SelectedIndex == 1 && !busy && client?.IsConnected != true;
+            keyField.Visible = auth.SelectedIndex == 1; keys.Enabled = auth.SelectedIndex == 1 && !busy && client?.IsConnected != true;
             passwordField.Controls.OfType<Label>().First().Text = auth.SelectedIndex == 1 ? "私钥口令（没有可留空）" : "密码";
             secret.AccessibleName = auth.SelectedIndex == 1 ? "私钥口令" : "密码";
         };
@@ -43,31 +40,27 @@ public sealed partial class MainForm
             UiLayout.Pair(UiLayout.Field("用户名", user), UiLayout.Field("认证方式", auth)),
             keyField, passwordField, UiLayout.Actions(connect, disconnect));
         UiLayout.Add(page, identity);
-        var preferences = UiLayout.Stack(); preferences.Margin = new Padding(0, 4, 0, 0);
-        remember.Margin = new Padding(0, 4, 0, 10); retry.Margin = new Padding(0, 4, 0, 10);
+        var preferences = UiLayout.Stack(); preferences.Margin = UiTheme.Spacing(0, 4, 0, 0);
+        remember.Margin = UiTheme.Spacing(0, 4, 0, 10); retry.Margin = UiTheme.Spacing(0, 4, 0, 10);
         UiLayout.Add(preferences, remember); remember.Dock = DockStyle.None;
         UiLayout.Add(preferences, retry); retry.Dock = DockStyle.None;
-        UiLayout.Add(page, UiLayout.Card("隧道偏好", "凭据加密保存在当前用户的文档目录，仅当前 Windows 用户可解密。",
+        UiLayout.Add(preferences, enableUdp); enableUdp.Dock = DockStyle.None;
+        UiLayout.Add(page, UiLayout.Card("隧道偏好", "凭据仅当前 Windows 用户可解密。保存目录可在“设置”中更改。",
             UiLayout.Pair(UiLayout.Field("本机 SOCKS5 端口", socksPort), preferences, 45)));
         UiLayout.Add(page, UiLayout.Help("首次连接请核对服务器指纹。关闭窗口后连接保留在托盘，退出应用才会停止隧道。"));
     }
-
     private void BuildRules()
     {
         var page = PageContent("转发规则");
         var summary = UiLayout.Help("尚未添加规则"); summary.Name = "ruleSummary";
-        var saveRules = UiLayout.Primary("保存规则", 130);
-        var copyRules = UiLayout.Button("复制规则", 120);
+        var saveRules = UiLayout.Primary("保存规则", 130); var copyRules = UiLayout.Button("复制规则", 120);
         void UpdateSummary()
         {
             bool dirty = ruleText.Text.Replace("\r", "") != settings.Rules.Replace("\r", "");
             try
             {
-                // The compiler emits a comment for an empty rule set, not a forwarding rule.
-                int count = Rules.Compile(ruleText.Text).Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                    .Count(line => !line.TrimStart().StartsWith('#'));
-                summary.Text = $"{count} 条规则 · " + (dirty ? "有未保存的更改" : "已保存");
-                summary.ForeColor = dirty ? UiTheme.Accent : UiTheme.Muted;
+                int count = Rules.Compile(ruleText.Text).Split('\n', StringSplitOptions.RemoveEmptyEntries).Count(line => !line.TrimStart().StartsWith('#'));
+                summary.Text = $"{count} 条规则 · " + (dirty ? "有未保存的更改" : "已保存"); summary.ForeColor = dirty ? UiTheme.Accent : UiTheme.Muted;
             }
             catch (FormatException) { summary.Text = "规则格式待修正 · 保存时将显示具体原因"; summary.ForeColor = Color.FromArgb(150, 90, 30); }
             copyRules.Enabled = ruleText.TextLength > 0;
@@ -77,15 +70,14 @@ public sealed partial class MainForm
         {
             try
             {
-                var payload = Rules.Compile(ruleText.Text);
-                settings.Rules = ruleText.Text.Replace("\r", ""); settings.Save();
-                if (client?.IsConnected == true) ClashRuleFile.Write(payload);
+                _ = Rules.Compile(ruleText.Text);
+                settings.Rules = ruleText.Text.Replace("\r", ""); settings.Save(); ApplyRouteFiles();
                 UpdateSummary(); Log("规则已保存；Clash 将重新读取本地规则文件。");
             }
             catch (Exception ex) { Error(ex); }
         };
         copyRules.Click += (_, _) => { try { Clipboard.SetText(ruleText.Text); summary.Text = "规则已复制"; } catch (Exception ex) { Error(ex); } };
-        UiLayout.Add(page, UiLayout.Card("规则列表", "每行一个目标。只有命中的 TCP 连接会通过虚拟机转发。",
+        UiLayout.Add(page, UiLayout.Card("规则列表", "每行一个目标。命中的 TCP / UDP 优先经过虚拟机，不可用时回退原有分流。",
             UiLayout.Actions(saveRules, copyRules), new EntryFrame(PrepareRulesEditor(), true, 260), summary));
         UiLayout.Add(page, UiLayout.Card("支持的格式", "",
             UiLayout.Help("精确域名  code.example.com\n域名及子域名  *.example.com\n单个 IP  10.20.30.40\n网段  10.20.30.0/24"),
@@ -93,16 +85,14 @@ public sealed partial class MainForm
         TextBox PrepareRulesEditor()
         {
             ruleText.Multiline = true; ruleText.AcceptsReturn = true; ruleText.ScrollBars = ScrollBars.Both;
-            ruleText.WordWrap = false; ruleText.Font = UiLayout.CodeFont(); ruleText.MinimumSize = new Size(0, 100);
+            ruleText.WordWrap = false; ruleText.Font = UiLayout.CodeFont(); ruleText.MinimumSize = UiTheme.Size(0, 100);
             ruleText.AccessibleName = "转发规则编辑器"; return ruleText;
         }
     }
-
     private void BuildClash()
     {
         var page = PageContent("Clash 接入");
-        var quickCopy = UiLayout.Primary("生成并复制", 150);
-        var mergeScript = UiLayout.Button("合并已有脚本", 170);
+        var quickCopy = UiLayout.Primary("生成并复制", 150); var mergeScript = UiLayout.Button("合并已有脚本", 170);
         quickCopy.Click += (_, _) =>
         {
             try
@@ -117,7 +107,7 @@ public sealed partial class MainForm
             using var dialog = new ScriptDialog(GenerateScript, existingClashScript);
             dialog.ShowDialog(this); existingClashScript = dialog.OriginalScript;
         };
-        UiLayout.Add(page, UiLayout.Card("01  生成扩展脚本", "没有自定义脚本时直接生成；已有 JavaScript 时合并保留原逻辑。将完整结果粘贴到当前订阅的“编辑扩展脚本”，保存并应用。", UiLayout.Actions(quickCopy, mergeScript)));
+        UiLayout.Add(page, UiLayout.Card("01  生成扩展脚本", "没有自定义脚本时直接生成；也可粘贴旧版完整脚本，只更新托管区并保留自定义逻辑。将完整结果粘贴到当前订阅的“编辑扩展脚本”，保存并应用。", UiLayout.Actions(quickCopy, mergeScript)));
         var tunDetails = UiLayout.Stack(); tunDetails.Name = "tunInstructions";
         UiLayout.Add(tunDetails, UiLayout.Help("模式：规则模式\n虚拟网卡：开启 TUN 与自动路由\nDNS 劫持：any:53、tcp://any:53\n路由排除：虚拟机 IPv4/32，或 IPv6/128"));
         UiLayout.Add(tunDetails, UiLayout.Help("不要排除需要转发的目标 IP。TUN 界面字段由 Clash 管理，扩展脚本不会覆盖这些字段。Fake-IP 规则需要支持 fake-ip-filter-mode: rule 的 Mihomo 内核。"));
@@ -129,8 +119,7 @@ public sealed partial class MainForm
             try
             {
                 if (!System.Net.IPAddress.TryParse(host.Text.Trim(), out var address)) throw new ArgumentException("请先填写正确的虚拟机 IP。");
-                Clipboard.SetText(address + (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? "/32" : "/128"));
-                Log("虚拟机路由排除地址已复制。");
+                Clipboard.SetText(address + (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? "/32" : "/128")); Log("虚拟机路由排除地址已复制。");
             }
             catch (Exception ex) { Error(ex); }
         };
@@ -150,23 +139,19 @@ public sealed partial class MainForm
                 using var handler = new SocketsHttpHandler { Proxy = new System.Net.WebProxy("socks5://127.0.0.1:" + socksPort.Value), UseProxy = true, AllowAutoRedirect = false };
                 using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
                 using var response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead);
-                testResult.Text = "收到 HTTP " + (int)response.StatusCode + " · SOCKS5 请求已完成";
-                Log("SOCKS5 测试：HTTP " + (int)response.StatusCode);
+                testResult.Text = "收到 HTTP " + (int)response.StatusCode + " · SOCKS5 请求已完成"; Log("SOCKS5 测试：HTTP " + (int)response.StatusCode);
             }
             catch (Exception ex) { testResult.Text = "测试未完成，请检查连接与运行日志。"; Error(ex); }
             finally { if (!test.IsDisposed) test.Enabled = true; }
         };
         UiLayout.Add(page, UiLayout.Card("03  验证连接", "浏览目标网页，并在 Clash 连接列表确认命中 Host2VMRelay。", UiLayout.Field("测试网址", testUrl), UiLayout.Actions(test), testResult));
-        UiLayout.Add(page, UiLayout.Help("仅支持 TCP，不转发 UDP。Chrome 自定义安全 DNS 可能绕过分流；规则还需包含登录跳转域名。"));
+        UiLayout.Add(page, UiLayout.Help("UDP 保持原域名、IP 和端口；虚拟机需 Python 3。单播数据报经 SSH 封装，不支持广播/组播；Chrome 自定义安全 DNS 可能绕过分流。"));
     }
-
     private string GenerateScript(string? existing)
     {
         string result = ClashScript.Generate((int)socksPort.Value, host.Text.Trim(), existing);
-        if (client?.IsConnected == true) ClashRuleFile.Write(Rules.Compile(settings.Rules)); else ClashRuleFile.Disable();
-        Log("完整 Clash 扩展脚本已生成。"); return result;
+        ApplyRouteFiles(); Log("完整 Clash 扩展脚本已生成。"); return result;
     }
-
     private void BuildLog()
     {
         var page = PageContent("运行日志");

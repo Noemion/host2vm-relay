@@ -19,10 +19,10 @@ internal static class Program
             {
                 string folder = Path.GetDirectoryName(smokeOutput!)!;
                 Directory.CreateDirectory(folder);
-                // Acceptance runs must not read/migrate credentials or alter live Clash rules.
                 Settings.Folder = Path.Combine(folder, "smoke-settings");
                 ClashRuleFile.Folder = Path.Combine(folder, "smoke-rules");
             }
+            if (!smoke) Settings.InitializeLocation();
             using var form = new MainForm();
             if (smoke)
             {

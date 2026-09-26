@@ -22,6 +22,10 @@ $resultPath = Join-Path $checks 'self-test.txt'
 Invoke-AppCheck "--self-test `"$resultPath`"" $resultPath
 & node (Join-Path $repoRoot 'tests\test-script.cjs') (Join-Path $checks 'mihomo.json') (Join-Path $checks 'script-cases.json')
 if ($LASTEXITCODE -ne 0) { throw 'JavaScript regression tests failed.' }
+& node (Join-Path $repoRoot 'tests\test-incremental.cjs') (Join-Path $checks 'incremental-cases.json')
+if ($LASTEXITCODE -ne 0) { throw 'Incremental script upgrade tests failed.' }
+& node (Join-Path $repoRoot 'tests\test-setup-icon.cjs') (Join-Path $repoRoot 'artifacts\assets\Host2VMRelay.Setup.ico')
+if ($LASTEXITCODE -ne 0) { throw 'Setup icon format tests failed.' }
 & node (Join-Path $repoRoot 'tests\test-assets.cjs')
 if ($LASTEXITCODE -ne 0) { throw 'Icon and DPI configuration checks failed.' }
 if ($Smoke) {

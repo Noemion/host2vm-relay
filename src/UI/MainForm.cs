@@ -8,6 +8,12 @@ public sealed partial class MainForm : Form
     private readonly Settings settings;
     private SshClient? client;
     private ForwardedPortDynamic? forward;
+    private RelaySocksServer? relay;
+    private UdpTunnel? udpTunnel;
+    private bool polling;
+    private string lastPath = "";
+    private DateTime nextUdpRetry;
+    private readonly CheckBox enableUdp = new() { Text = "透明转发 UDP", AutoSize = true };
     private PrivateKeyFile? keyFile;
     private readonly TextBox host = new(), user = new(), secret = new(), keyPath = new(), ruleText = new(), log = new();
     private readonly NumericUpDown port = new() { Minimum = 1, Maximum = 65535 }, socksPort = new() { Minimum = 1024, Maximum = 65535 };
@@ -18,7 +24,7 @@ public sealed partial class MainForm : Form
     private readonly Label state = new StatusBadge { Text = "● 未连接", ForeColor = Color.DimGray }, feed = UiLayout.Help("Clash 本地规则 · 未启用");
     private readonly NotifyIcon tray = new() { Text = "Host2VMRelay" };
     private Icon? windowIcon, trayIcon;
-    private readonly System.Windows.Forms.Timer timer = new() { Interval = 1500 };
+    private readonly System.Windows.Forms.Timer timer = new() { Interval = 3000 };
     private bool busy, wanted, quitting;
     private DateTime nextRetry;
     private string existingClashScript = "";
@@ -30,12 +36,13 @@ public sealed partial class MainForm : Form
         SuspendLayout(); DoubleBuffered = true;
         Text = "Host2VMRelay"; Font = UiLayout.BodyFont(); ForeColor = UiTheme.Ink;
         AutoScaleDimensions = new SizeF(96F, 96F); AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(1100, 780); MinimumSize = new Size(680, 520);
+        ClientSize = UiTheme.Size(1100, 780); MinimumSize = UiTheme.Size(680, 520);
         BackColor = UiTheme.Canvas; StartPosition = FormStartPosition.CenterScreen;
         disconnect.Enabled = false; UpdateIcons(96);
-        BuildShell(); BuildConnection(); BuildRules(); BuildClash(); BuildLog(); RefreshNavigation();
+        BuildShell(); BuildConnection(); BuildRules(); BuildClash(); BuildLog(); BuildSettings(); RefreshNavigation();
         host.Text = settings.Host; port.Value = settings.Port; user.Text = settings.User; socksPort.Value = settings.SocksPort;
         keyPath.Text = settings.KeyPath; auth.SelectedIndex = settings.UseKey ? 1 : 0;
+        enableUdp.Checked = settings.EnableUdp;
         remember.Checked = settings.RememberSecret; retry.Checked = settings.Reconnect; ruleText.Text = settings.Rules.Replace("\n", Environment.NewLine);
         try { secret.Text = SecretStore.Unprotect(settings.ProtectedSecret); }
         catch { Log("保存的密码无法在当前 Windows 用户下解密，请重新输入。"); }
@@ -66,17 +73,7 @@ public sealed partial class MainForm : Form
             wanted = false; timer.Stop(); Cleanup(); TryDisableRules();
             tray.Dispose(); menu.Dispose(); timer.Dispose(); windowIcon?.Dispose(); trayIcon?.Dispose();
         };
-        timer.Tick += async (_, _) =>
-        {
-            bool connected = client?.IsConnected == true;
-            feed.Text = connected ? "Clash 本地规则 · 已启用" : "Clash 本地规则 · 未启用";
-            if (wanted && !busy && !connected)
-            {
-                TryDisableRules(); SetConnectionControls(false);
-                if (DateTime.UtcNow >= nextRetry && retry.Checked) await Connect(true);
-                else { state.Text = retry.Checked ? "● 连接断开，等待重连" : "● 连接已断开"; state.ForeColor = Color.DarkOrange; }
-            }
-        };
+        timer.Tick += async (_, _) => await PollNetworkAsync();
         Shown += (_, _) =>
         {
             UpdateIcons(DeviceDpi); UiLayout.FitToScreen(this, new Size(680, 520)); UpdateShellLayout();
@@ -89,7 +86,6 @@ public sealed partial class MainForm : Form
         };
         ResumeLayout(true); timer.Start();
     }
-
     private void UpdateIcons(int dpi)
     {
         var large = AppIcon.Load(Math.Max(16, 32 * dpi / 96));

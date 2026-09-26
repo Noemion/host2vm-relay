@@ -26,7 +26,7 @@ OutputBaseFilename=Host2VMRelay-{#AppVersion}-Setup
 Compression=lzma2/fast
 SolidCompression=no
 WizardStyle=modern
-SetupIconFile=..\artifacts\assets\Host2VMRelay.ico
+SetupIconFile=..\artifacts\assets\Host2VMRelay.Setup.ico
 UninstallDisplayIcon={app}\Host2VMRelay.exe
 CloseApplications=yes
 RestartApplications=no
@@ -81,4 +81,4 @@ begin
   end;
 end;
 
-// User settings live in Documents\Host2VMRelay and are intentionally retained.
+// User configuration and its location pointer are intentionally retained.
