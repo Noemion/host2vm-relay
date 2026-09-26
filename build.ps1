@@ -35,7 +35,7 @@ try {
     if ($Install) {
         [xml]$projectXml = Get-Content -LiteralPath $project
         $version = [string]$projectXml.Project.PropertyGroup.Version
-        $setup = Join-Path $repoRoot "artifacts\release\Host2VMRelay-$version-Setup.exe"
+        $setup = Join-Path $repoRoot "artifacts\release\Host2VMRelay-$version-win-universal-Setup.exe"
         if (!(Test-Path -LiteralPath $setup)) { throw 'Installer was not generated.' }
         $process = Start-Process -FilePath $setup -Wait -PassThru
         if ($process.ExitCode -ne 0) { throw "Installer failed with exit code $($process.ExitCode)" }

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0 — Transparent UDP, recovery and compact controls
+
+- Add bounded SOCKS5 UDP associations over a session-scoped SSH/Python bridge; retain the original TCP forwarding path.
+- Independently check TCP/UDP health and resume the host's original rule matching through PASS when a transport fails, including after process termination.
+- Add warning/recovery feedback, background reconnection and independent UDP recovery; manual disconnect remains stopped.
+- Document and test the distinction between existing corporate DNS resolution and unsupported automatic UDP resolution of VM-only hosts aliases.
+- Add configurable profile storage with safe migration, destination backups, persistence and explicit unavailable-path errors.
+- Upgrade script composition to owned/user sections with managed-region conflict checks and migration from known v0.4.0–v0.5.0 output.
+- Reduce content sizing to 80% and tighten whitespace; retain five-scale DPI checks and add the settings page.
+- Build a compatible setup ICO, inspect the actual EXE and Shell icons, and label universal installers explicitly.
+- Gate releases on Windows checks and Linux real TUN/SSH failover acceptance; retain native Windows UDP checks and structured evidence.
+
 ## 0.5.0 — Refined desktop workspace
 
 - Replace the plain tabbed form with adaptive sidebar navigation, grouped cards and a consistent graphite, off-white and muted-green visual language.

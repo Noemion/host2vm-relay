@@ -62,8 +62,9 @@ public static class H2VMSetupIconCheck {
                     int different=0;
                     for(int y=0;y<bitmap.Height;y++) for(int x=0;x<bitmap.Width;x++)
                         if(bitmap.GetPixel(x,y).ToArgb()!=expected.GetPixel(x,y).ToArgb()) different++;
-                    if(different>bitmap.Width*bitmap.Height/20) throw new IOException("Shell returned a generic or stale icon");
+                    expected.Save(Path.Combine(folder,small?"shell-small-reference.png":"shell-large-reference.png"),ImageFormat.Png);
                     bitmap.Save(Path.Combine(folder,small?"shell-small.png":"shell-large.png"),ImageFormat.Png);
+                    if(different>bitmap.Width*bitmap.Height/20) throw new IOException("Shell returned a generic or stale icon");
                 }
             } finally { DestroyIcon(info.hIcon); }
         }

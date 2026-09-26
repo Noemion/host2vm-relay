@@ -123,7 +123,12 @@ public sealed partial class MainForm
             relay.SetUpstream((int)forward.BoundPort, udpTunnel);
             ApplyRouteFiles(); PresentPath();
         }
-        catch (Exception ex) { TryDisableRules(); PresentPath(ex.Message); }
+        catch (Exception ex)
+        {
+            TryDisableRules();
+            feed.Text = "规则同步失败，未确认切换；请查看运行日志。";
+            Log("WARNING 状态同步失败：" + ex.Message);
+        }
         finally { polling = false; }
     }
     private void ApplyRouteFiles()

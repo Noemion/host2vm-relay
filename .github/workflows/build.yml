@@ -31,6 +31,9 @@ jobs:
       - name: Build and check scripts, icons and scaled layouts
         shell: pwsh
         run: .\build.ps1 -Test
+      - name: Check native Windows UDP transport
+        shell: pwsh
+        run: dotnet run --project tests/TransportHarness/TransportHarness.csproj -c Release -- --local-check artifacts/checks/windows-transport.json
       - name: Upload check results and layout screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

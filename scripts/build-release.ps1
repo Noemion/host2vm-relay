@@ -47,7 +47,7 @@ foreach ($rid in @('win-x64','win-x86','win-arm64')) {
 if (!$SkipInstaller) {
     & $Iscc "/DAppVersion=$version" "/DPayloadRoot=$publishRoot" "/DOutputRoot=$releaseRoot" (Join-Path $repoRoot 'packaging/Host2VMRelay.iss')
     if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
-    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'scripts\test-installer-icon.ps1') -Executable (Join-Path $releaseRoot "Host2VMRelay-$version-Setup.exe")
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'scripts\test-installer-icon.ps1') -Executable (Join-Path $releaseRoot "Host2VMRelay-$version-win-universal-Setup.exe")
     if ($LASTEXITCODE -ne 0) { throw 'Installer shell icon validation failed' }
 }
 Get-ChildItem -LiteralPath $releaseRoot -File | Where-Object { $_.Name -like "Host2VMRelay-$version-*" -and $_.Extension -in '.exe','.zip' } | Get-FileHash -Algorithm SHA256 |

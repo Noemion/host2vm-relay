@@ -3,6 +3,7 @@ using Renci.SshNet;
 using System.Security.Cryptography;
 using System.Text.Json;
 
+if (args.Length == 2 && args[0] == "--local-check") { await LocalTransportChecks.RunAsync(args[1]); return; }
 if (args.Length < 6) throw new ArgumentException("host sshPort user privateKey fingerprint scriptOutput");
 using var key = new PrivateKeyFile(args[3]);
 using var client = new SshClient(new ConnectionInfo(args[0], int.Parse(args[1]), args[2], new PrivateKeyAuthenticationMethod(args[2], key)) { Timeout = TimeSpan.FromSeconds(3) });

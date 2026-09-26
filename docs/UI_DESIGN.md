@@ -1,42 +1,34 @@
-# Desktop interface
+# Desktop UI design
 
-## Visual structure
+## Direction
 
-Host2VMRelay uses a restrained light desktop workspace: a cool off-white canvas, white cards, graphite text and a muted green primary action. The application retains the native Windows title bar, window management, text editing, password masking and file dialogs rather than emulating another operating system's window chrome.
+A restrained desktop workspace: neutral canvas, white surfaces, graphite text and a muted green accent. The visual language is inspired by simple utility applications, while retaining Windows title bars, native input behavior and keyboard access. Do not imitate macOS window controls or use platform-restricted fonts and symbols.
 
-`src/UI/UiTheme.cs` owns colours and the reusable card, input frame, action button, navigation button and status badge. `UiLayout.cs` owns typography, grouping, spacing and explicit-font tracking. Connection and networking behaviour remain separate from presentation.
+## Compact design tokens
 
-- Body and editor baseline: 12 pt; page title: 22 pt; card title: 14 pt.
-- Logical corner radii: cards 14, input frames 8, buttons 9.
-- Cards use 22 logical pixels of internal padding and 18 between groups.
-- Inputs keep native controls inside a softly bordered frame; keyboard focus adds a visible outline.
-- Primary actions use the accent colour. Secondary actions have quiet borders and hover, press, disabled and keyboard-focus states.
-- High Contrast uses system colours and native button painting. It requires separate visual acceptance on the target Windows theme.
+- Body and editor baseline: 9.6pt; page title: 17.6pt; card title: 11.2pt.
+- ContentScale=0.8 adjusts logical design dimensions; the operating system effective DPI stays unchanged.
+- Static whitespace uses SpacingScale=0.6. Cards use 13 logical pixels of padding and 11 between groups.
+- Typography, input frames, action buttons, editor frames and cards share factories. Native title-bar and taskbar icon sizes remain platform-driven.
+- Text is not shrunk further when the window gets narrow; layout reflows or scrolls.
+- Keep visible focus indication, hover/pressed/disabled states and normal Windows input/password/file picker behavior.
 
-## Adaptive navigation
+## Navigation and pages
 
-The four destinations are Connection, Rules, Clash integration and Logs. A sidebar is shown when the window has at least 860 logical pixels of client width. Below that threshold the same navigation controls move to a wrapping top bar. No destination is removed and text is not reduced to fit.
+Five destinations: Connection, Rules, Clash integration, Logs and Settings. At less than 688 logical pixels of client width, navigation moves above the content; none of the destinations is hidden. Alt+1 through Alt+5 and Ctrl+Tab/Ctrl+Shift+Tab navigate pages.
 
-The selected page has a distinct navigation state, heading and description. Alt+1 through Alt+4 switch pages; Ctrl+Tab and Ctrl+Shift+Tab cycle them. The connection state remains in the page header and rule activation remains in the footer.
+Connection groups identity and tunnel preferences. Private-key fields appear only for key authentication. UDP is a separately selectable capability; connection state distinguishes partial availability and host fallback.
 
-## Pages
+Rules place actions above the editor and show normalized unique counts, unsaved changes and invalid-input feedback. Log actions copy/export/clear without modifying connection settings.
 
-Connection groups SSH identity and tunnel preferences into two cards. Private-key browsing is disclosed only for private-key authentication. Sensitive values still use the existing current-user encryption and host-key verification.
+Clash integration separates script generation, TUN instructions and verification. Long setup instructions use disclosure rather than permanently occupying the page. UDP DNS prerequisites are documented separately; an HTTP SOCKS check is not advertised as a UDP or TUN test.
 
-Rules place Save and Copy above the editor and show rule count and unsaved changes inline. Examples are separated from the editable content. Saving does not require a success modal.
-
-Clash integration is split into script generation, TUN setup and verification. Detailed TUN instructions are expandable. The script continues to respect application-managed TUN values. Copying a route exclusion only changes the clipboard, not the system routing configuration.
-
-Logs provide copy, export and clear actions. Export is explicit and uses a Save dialog; clear affects only the current log. Users should review host addresses and usernames before sharing exported logs.
+Settings shows the active profile path and offers open/change/default operations. Migration is gated while connected, confirms replacements and retains the original profile.
 
 ## Script workspace
 
-An optional source editor and complete output preview appear side by side when merging and the viewport has at least 840 logical pixels of width. Narrow windows stack these cards vertically. With merging disabled only the output card is shown. The action row stays outside the scrollable editors.
-
-Ctrl+Enter generates and copies. Changing source or merge mode invalidates the previous output and disables Copy/Save. CR/LF conversion remains limited to display preparation. Original script extraction and native edit-control line counts remain covered by regression tests.
+The editor region alone scrolls; generation, copy, save and close controls remain outside it. At sufficient width, source and preview sit side-by-side; narrow layouts stack them. Updating input invalidates stale output. The Windows preview normalizes hard line breaks; composition preserves user logic and reports managed-region conflicts. Ctrl+Enter generates and copies.
 
 ## Acceptance
 
-`build.ps1 -Test` retains the independent 100/125/150/175/200 percent DPI message tests and the strict native-monitor guard. It also checks navigation state, private-key disclosure and expanded TUN instructions. Screenshots and assertions are stored under `artifacts/checks`, not source directories.
-
-A hosted 96-DPI desktop with injected messages is not evidence of physical 200% or multi-monitor acceptance. Refer to `DPI_VALIDATION.md` for the native test procedure. Full dark mode and custom title-bar behaviour are not part of this interface revision.
+Tests cover actual generated scripts, profile storage, native line counts, five pages, authentication-field disclosure, keyboard focus, caption fit, scrolling and repeated DPI transitions. Desktop screenshots are retained for 100/125/150/175/200%. Native 100% and injected high-DPI results are distinct. Real high-DPI monitors, cross-display moves, high-contrast themes and native file dialogs still require their respective physical environments.

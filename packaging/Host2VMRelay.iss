@@ -5,7 +5,7 @@
   #define OutputRoot "..\artifacts\release"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.5.0"
+  #define AppVersion "0.6.0"
 #endif
 
 [Setup]
@@ -22,7 +22,7 @@ MinVersion=10.0.14393
 SetupArchitecture=x86
 ArchitecturesInstallIn64BitMode=x64os or arm64
 OutputDir={#OutputRoot}
-OutputBaseFilename=Host2VMRelay-{#AppVersion}-Setup
+OutputBaseFilename=Host2VMRelay-{#AppVersion}-win-universal-Setup
 Compression=lzma2/fast
 SolidCompression=no
 WizardStyle=modern
