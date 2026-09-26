@@ -6,12 +6,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Host2VMRelay</AssemblyName>
-    <Version>0.2.1</Version>
-    <Product>Host2VM Relay</Product>
+    <Version>0.3.0</Version>
+    <Product>Host2VMRelay</Product>
     <Description>Selective host-to-VM forwarding through SSH and Clash TUN.</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)..\artifacts\build\bin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)..\artifacts\build\obj\</BaseIntermediateOutputPath>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="SSH.NET" Version="2026.0.0" />
