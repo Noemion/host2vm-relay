@@ -1,21 +1,27 @@
-# Host2VMRelay v0.4.0
+# Host2VMRelay v0.4.1
 
-## Changes
+## 本次修复
 
-- Add a unified graphite, mint-green and amber app emblem. The vector source produces nine ICO sizes (16–256 pixels) during the build, and the same icon is used for the executable, window, tray, shortcuts and installer.
-- Enable per-monitor DPI layout with a 96-DPI design baseline and 12-point body/editor fonts. Content wraps or scrolls instead of shrinking the text to fit a laptop screen.
-- Add direct script generation and an optional existing-script import/merge window with full preview, one-click generation/copy and Save As.
-- Preserve user functions and lexical scope; run the original script before applying relay integration. Re-importing a generated script replaces its managed wrapper rather than nesting another copy.
-- Report invalid return values, asynchronous entry points and missing main functions when Clash evaluates the script. User scripts are never executed by the desktop application. YAML subscription configuration is not an accepted script format.
-- Fix script preparation incorrectly disabling forwarding rules while the tunnel is connected.
-- Keep all generated icons, binaries, intermediate files, checks, screenshots and release packages under artifacts/.
+- 修复生成的扩展脚本与 Clash Verge 设置界面接管的 TUN 字段冲突，避免脚本改写 `tun.dns-hijack` 等字段后被丢弃。
+- 合并已有脚本时保留 Clash 传入的受管 TUN 设置，兼容旧脚本直接赋值、原地修改数组或替换整个 TUN 对象的情况；其他用户配置与自定义 TUN 选项继续保留。
+- 增加受管 TUN 字段回归测试，更新程序中的设置提示和使用说明。
+- 升级构建与发布工作流中的官方 Actions，使用原生 Node.js 24 运行时并固定到对应发行提交；项目 JavaScript 测试仍使用 Node.js 22。
+- 同步程序、安装器和清单版本号，发布结果摘要明确区分“新版本已发布”和“已有版本未覆盖”。
 
-## Upgrade
+本版本包含 v0.4.0 的多尺寸程序图标、DPI 缩放改造、完整脚本生成、已有脚本导入/合并、预览、一键复制和另存为功能。
 
-Install the new version, then generate and apply the complete Clash extension script once. For custom logic, choose the merge option and paste/import the original JavaScript. User configuration remains in the current Windows user's Documents/Host2VMRelay directory. Password encryption and the SSH host-key trust store are unchanged.
+## 下载与升级
 
-## Build and checks
+`Host2VMRelay-0.4.1-Setup.exe` 为通用 Windows 安装包，自动选择 x64、x86 或 ARM64。需要便携版时下载对应的 `win-x64`、`win-x86` 或 `win-arm64` ZIP。运行时与应用依赖已经包含在包中，无需自行编译或安装 .NET SDK、Node.js。
 
-Use `./build.ps1 -Test` in Windows PowerShell to build and run the checks (Node.js is needed only for JavaScript tests). The existing Windows workflow also creates 100%, 125%, 150% and 200% synthetic layout screenshots. These layout tests are not a substitute for native DPI changes across physical monitors. End-to-end routing through the user's VM still requires their own environment.
+升级前从托盘退出旧程序。安装器检测到当前用户已安装旧版时先卸载旧程序再安装，用户配置保留在 Windows“文档/Host2VMRelay”目录。
 
-The runtime remains bundled in release packages. The application and installer are not code-signed.
+**安装完成后必须重新生成完整 Clash 扩展脚本，整体替换当前订阅中的旧脚本，再保存并重新应用。仅安装新程序不会替换已粘贴到 Clash 的旧脚本。** 有自定义脚本时使用“导入 / 合并已有脚本”。
+
+在 Clash 的 TUN 设置界面开启 TUN 和自动路由，DNS 劫持添加 `any:53` 与 `tcp://any:53`，路由排除添加实际虚拟机 IP 的 `/32`（IPv6 使用 `/128`），不要排除需要转发的目标地址。其他全局或订阅扩展若也写入受管字段，需要分别调整。
+
+## 构建与验证范围
+
+正式安装包由现有 Windows 工作流在构建、脚本回归、图标检查、合成缩放布局检查及打包程序自检通过后发布。100%、125%、150%、200% 的合成布局截图不能替代真实多显示器 DPI 切换测试，ARM64 包仍需 ARM64 设备验证，实际虚拟机端到端转发需在用户环境验证。
+
+仍仅转发 TCP。应用和安装包尚未进行代码签名。`SHA256SUMS.txt` 提供安装包和便携包校验值。

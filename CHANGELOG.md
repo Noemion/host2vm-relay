@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1 — Clash settings compatibility and release maintenance
+
+- Publish the managed TUN settings fix previously available only in main and Actions artifacts.
+- Preserve incoming Clash Verge GUI-owned TUN values, including when importing legacy scripts that mutate arrays or replace the TUN object.
+- Keep unrelated user configuration and custom TUN options intact; configure DNS hijacking and VM route exclusions in the Clash settings interface.
+- Add regression coverage for managed TUN fields and clarify script regeneration after upgrading.
+- Upgrade official workflow actions to Node.js 24 runtimes and pin their release commits; keep Node.js 22 for project script tests.
+- Synchronize application, installer and manifest versions and show explicit published/skipped release summaries.
+
 ## 0.4.0 — Readable desktop UI and complete script generation
 
 - Add one integrated application icon, generated from a versioned vector source in nine sizes.

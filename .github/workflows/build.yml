@@ -13,19 +13,20 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '8.0.x'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
+          package-manager-cache: false
       - name: Build and check scripts, icons and scaled layouts
         shell: pwsh
         run: .\build.ps1 -Test
       - name: Upload check results and layout screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Host2VMRelay-checks
           path: artifacts/checks/
@@ -54,10 +55,11 @@ jobs:
             Get-Content $resultPath
             if ($test.ExitCode -ne 0) { throw "Packaged self-test failed: $rid" }
           }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Host2VMRelay-Windows
           path: artifacts/release/
+          if-no-files-found: error
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: windows
@@ -65,8 +67,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: Host2VMRelay-Windows
           path: artifacts/release
@@ -82,7 +84,12 @@ jobs:
           $existing = gh release view $tag --json isPrerelease 2>$null
           if ($LASTEXITCODE -eq 0) {
             $metadata = $existing | ConvertFrom-Json
-            if (!$metadata.isPrerelease) { Write-Host "Release $tag already exists; preserving its assets."; exit 0 }
+            if (!$metadata.isPrerelease) {
+              Write-Host "Release $tag already exists; preserving its assets."
+              "## Release publication skipped" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              "Release $tag already exists and was not overwritten. New build artifacts do not update this release. Increase the project version and update the release notes to publish a new version." | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+              exit 0
+            }
             gh release upload $tag @assets --clobber
             if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed' }
             gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" -f "sha=$env:GITHUB_SHA" -F force=false
@@ -92,3 +99,5 @@ jobs:
             gh release create $tag @assets --target $env:GITHUB_SHA --latest --title "Host2VMRelay $tag" --notes-file docs/RELEASE_NOTES.md
           }
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
+          "## Release published" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "Host2VMRelay $tag published from commit $env:GITHUB_SHA with $($assets.Count) release assets." | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
