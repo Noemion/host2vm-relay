@@ -5,17 +5,17 @@
   #define OutputRoot "..\artifacts\release"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.2.1"
+  #define AppVersion "0.3.0"
 #endif
 
 [Setup]
 AppId={{B49F96CE-C602-4C52-A415-61A77A0B4BE7}
-AppName=Host2VM Relay
+AppName=Host2VMRelay
 AppVersion={#AppVersion}
-AppPublisher=Host2VM Relay contributors
+AppPublisher=Host2VMRelay contributors
 AppComments=Selective host-to-VM forwarding through SSH and Clash TUN
 DefaultDirName={localappdata}\Programs\Host2VMRelay
-DefaultGroupName=Host2VM Relay
+DefaultGroupName=Host2VMRelay
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 MinVersion=10.0.14393
@@ -31,7 +31,7 @@ CloseApplications=yes
 RestartApplications=no
 AppMutex=Local\Host2VMRelay.Desktop
 SetupLogging=yes
-VersionInfoDescription=Host2VM Relay offline installer
+VersionInfoDescription=Host2VMRelay offline installer
 
 [Languages]
 Name: "zhcn"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
@@ -47,10 +47,37 @@ Source: "{#PayloadRoot}\win-arm64\Host2VMRelay.exe"; DestDir: "{app}"; Flags: ig
 Source: "{#PayloadRoot}\common\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Host2VM Relay"; Filename: "{app}\Host2VMRelay.exe"
-Name: "{autodesktop}\Host2VM Relay"; Filename: "{app}\Host2VMRelay.exe"; Tasks: desktopicon
+Name: "{group}\Host2VMRelay"; Filename: "{app}\Host2VMRelay.exe"
+Name: "{autodesktop}\Host2VMRelay"; Filename: "{app}\Host2VMRelay.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\Host2VMRelay.exe"; Description: "{cm:LaunchProgram,Host2VM Relay}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Host2VMRelay.exe"; Description: "{cm:LaunchProgram,Host2VMRelay}"; Flags: nowait postinstall skipifsilent
 
-; User settings live in LocalAppData\Host2VMRelay and are intentionally retained.
+[Code]
+function InitializeSetup(): Boolean;
+var
+  UninstallString: String;
+  ResultCode: Integer;
+begin
+  Result := True;
+  if RegQueryStringValue(
+       HKCU,
+       'Software\Microsoft\Windows\CurrentVersion\Uninstall\{B49F96CE-C602-4C52-A415-61A77A0B4BE7}_is1',
+       'UninstallString',
+       UninstallString) then
+  begin
+    if not Exec(
+         RemoveQuotes(UninstallString),
+         '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS',
+         '',
+         SW_HIDE,
+         ewWaitUntilTerminated,
+         ResultCode) or (ResultCode <> 0) then
+    begin
+      MsgBox('无法卸载现有 Host2VMRelay，请先手动卸载后重试。', mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+end;
+
+// User settings live in Documents\Host2VMRelay and are intentionally retained.
