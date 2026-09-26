@@ -12,8 +12,6 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <BaseOutputPath>$(MSBuildThisFileDirectory)..\artifacts\build\bin\</BaseOutputPath>
-    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)..\artifacts\build\obj\</BaseIntermediateOutputPath>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="SSH.NET" Version="2026.0.0" />
