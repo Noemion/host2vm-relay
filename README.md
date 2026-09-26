@@ -1,4 +1,4 @@
-# Host2VM Relay
+# Host2VMRelay
 
 让 Windows 宿主机把**指定域名和 IP 的访问请求交给虚拟机转发**，其他流量继续使用原有规则。适合通过虚拟机访问特定网络资源的场景。
 
@@ -14,7 +14,7 @@
 
 ### 1. 安装
 
-[下载安装包](https://github.com/Noemion/host2vm-relay/releases/download/v0.2.1/Host2VMRelay-0.2.1-Setup.exe)，双击安装。其他架构便携包见 [Releases](https://github.com/Noemion/host2vm-relay/releases/latest) 页底部的 **Assets**。
+[下载安装包](https://github.com/Noemion/host2vm-relay/releases/download/v0.3.0/Host2VMRelay-0.3.0-Setup.exe)，双击安装。其他架构便携包见 [Releases](https://github.com/Noemion/host2vm-relay/releases/latest) 页底部的 **Assets**。
 
 安装包自动选择系统架构，**不需要另外安装 .NET、Python 或编译器**。
 
@@ -43,13 +43,13 @@ code.example.com
 
 例如，虚拟机 IP 是 `192.168.229.10`，路由排除填写 `192.168.229.10/32`。不要排除需要转发的目标 IP。
 
-现在可以在宿主机正常打开目标网页，或直接 SSH 连接目标服务器。在 Clash 的连接列表中，可确认请求是否经过 `Host2VM Relay`。
+现在可以在宿主机正常打开目标网页，或直接 SSH 连接目标服务器。在 Clash 的连接列表中，可确认请求是否经过 `Host2VMRelay`。
 
 ## 日常使用
 
-- 修改目标后点击「保存规则」，通常约 15 秒生效，无需重复粘贴脚本。
+- 修改目标后点击「保存规则」，Clash 会自动重新读取本地规则文件，无需重复粘贴脚本。
 - 关闭窗口会缩到托盘并继续运行；右键托盘图标可退出。
-- 使用期间保持虚拟机、Clash 和本应用运行。
+- Host2VMRelay 未运行或隧道断开时，本地规则保持停用，不会再轮询 127.0.0.1 的 HTTP provider。
 - 当前仅转发 TCP，适用于网页和 SSH，不支持 UDP。
 
 更多安装、构建和兼容性信息见 [部署说明](docs/DEPLOYMENT.md)，测试范围见 [验证记录](docs/VALIDATION.md)。
