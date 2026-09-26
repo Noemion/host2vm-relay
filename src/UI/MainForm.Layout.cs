@@ -22,6 +22,7 @@ public sealed partial class MainForm
         keys.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); keys.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         keys.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var keyFrame = new EntryFrame(keyPath); keyFrame.Margin = new Padding(0, 0, 10, 0);
+        keyPath.AccessibleName = "私钥文件路径";
         var browse = UiLayout.Button("浏览…", 86); browse.Margin = Padding.Empty;
         browse.Click += (_, _) =>
         {
@@ -62,7 +63,9 @@ public sealed partial class MainForm
             bool dirty = ruleText.Text.Replace("\r", "") != settings.Rules.Replace("\r", "");
             try
             {
-                int count = Rules.Compile(ruleText.Text).Split('\n', StringSplitOptions.RemoveEmptyEntries).Length;
+                // The compiler emits a comment for an empty rule set, not a forwarding rule.
+                int count = Rules.Compile(ruleText.Text).Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Count(line => !line.TrimStart().StartsWith('#'));
                 summary.Text = $"{count} 条规则 · " + (dirty ? "有未保存的更改" : "已保存");
                 summary.ForeColor = dirty ? UiTheme.Accent : UiTheme.Muted;
             }
@@ -91,7 +94,7 @@ public sealed partial class MainForm
         {
             ruleText.Multiline = true; ruleText.AcceptsReturn = true; ruleText.ScrollBars = ScrollBars.Both;
             ruleText.WordWrap = false; ruleText.Font = UiLayout.CodeFont(); ruleText.MinimumSize = new Size(0, 100);
-            return ruleText;
+            ruleText.AccessibleName = "转发规则编辑器"; return ruleText;
         }
     }
 
@@ -168,6 +171,7 @@ public sealed partial class MainForm
     {
         var page = PageContent("运行日志");
         var copyLog = UiLayout.Button("复制日志", 120); var exportLog = UiLayout.Button("导出日志", 120); var clearLog = UiLayout.Button("清空", 90);
+        clearLog.Name = "clearLog"; log.AccessibleName = "运行日志内容";
         var counter = UiLayout.Help("连接与操作发生后，记录将显示在这里。"); counter.Name = "logSummary";
         log.TextChanged += (_, _) =>
         {

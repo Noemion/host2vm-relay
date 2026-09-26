@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Host2VMRelay</AssemblyName>
-    <Version>0.4.3</Version>
+    <Version>0.5.0</Version>
     <Product>Host2VMRelay</Product>
     <Description>Selective host-to-VM forwarding through SSH and Clash TUN.</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>

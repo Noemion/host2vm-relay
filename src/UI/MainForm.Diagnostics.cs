@@ -31,6 +31,23 @@ public sealed partial class MainForm
                 audit.Check(tabs.SelectedIndex == i && navigationButtons.Count(b => b.Selected) == 1, "navigation selects exactly one page: " + i);
                 audit.Check(pageTitle?.Text == PageTitles[i], "page heading follows navigation: " + i);
             }
+            SelectPage(1);
+            string originalRules = ruleText.Text, savedRules = settings.Rules;
+            var ruleSummary = tabs.TabPages[1].Controls.Find("ruleSummary", true).OfType<Label>().Single();
+            ruleText.Text = "# comment only\r\n";
+            audit.Check(ruleSummary.Text.StartsWith("0 条规则"), "comment-only rules count as zero");
+            ruleText.Text = "test.example\r\ntest.example\r\n# comment";
+            audit.Check(ruleSummary.Text.StartsWith("1 条规则") && ruleSummary.Text.Contains("未保存"), "rule count uses normalized unique entries and marks unsaved changes");
+            ruleText.Text = "https://invalid.example/path";
+            audit.Check(ruleSummary.Text.Contains("格式待修正"), "invalid rule input gives inline feedback");
+            audit.Check(settings.Rules == savedRules, "editing alone does not overwrite saved rules");
+            ruleText.Text = originalRules;
+            SelectPage(3);
+            string previousLog = log.Text, previousHost = settings.Host;
+            log.Text = "00:00:00  diagnostic entry\r\n";
+            tabs.TabPages[3].Controls.Find("clearLog", true).OfType<Button>().Single().PerformClick();
+            audit.Check(log.TextLength == 0 && settings.Host == previousHost && settings.Rules == savedRules, "clear log preserves connection and rule settings");
+            log.Text = previousLog;
             SelectPage(0);
             int startDpi = DeviceDpi; var fonts = UiAcceptance.FontBaseline(this);
             audit.ApplyDpi(this, audit.TargetDpi); audit.VerifyFontScaling(fonts, startDpi, audit.TargetDpi);

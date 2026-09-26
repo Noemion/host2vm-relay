@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0 — Refined desktop workspace
+
+- Replace the plain tabbed form with adaptive sidebar navigation, grouped cards and a consistent graphite, off-white and muted-green visual language.
+- Add rounded input frames around native controls, primary/secondary action styles, keyboard focus feedback and a persistent connection badge.
+- Switch navigation to a top bar in narrow windows without removing destinations or shrinking text; retain 12-point body and editor fonts.
+- Reorganize connection settings, disclose private-key fields only when needed, and show normalized rule counts and unsaved changes inline.
+- Present Clash integration as three steps with expandable TUN instructions and a copy action for the VM route exclusion.
+- Rebuild the script dialog as a responsive two-column workspace with vertically stacked editors on narrow windows and a separate action row.
+- Add log copy, explicit export and clear operations; clearing logs does not alter connection settings.
+- Fix fractional-DPI height rounding in borderless native inputs using actual font metrics and reduce secondary chrome in compact windows.
+- Expand 100/125/150/175/200 DPI regression coverage to navigation, private-key disclosure, rule summaries, expanded guidance and usable editor viewport height.
+- Preserve SSH authentication, current-user secret storage, local rule providers and managed TUN script behaviour. Native high-DPI and physical multi-monitor acceptance remain separately documented.
+
 ## 0.4.3 — Script preview rendering acceptance
 
 - Normalize CR, LF and CRLF to Windows hard line breaks when displaying imported or generated scripts.
