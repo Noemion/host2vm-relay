@@ -13,43 +13,27 @@ public sealed partial class MainForm : Form
     private readonly NumericUpDown port = new() { Minimum = 1, Maximum = 65535 }, socksPort = new() { Minimum = 1024, Maximum = 65535 };
     private readonly ComboBox auth = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private Control? keyControls;
-    private readonly CheckBox remember = new() { Text = "加密保存密码 / 私钥口令（仅当前 Windows 用户可解密）", AutoSize = true }, retry = new() { Text = "连接断开后自动重连", AutoSize = true };
-    private readonly Button connect = UiLayout.Button("连接虚拟机", 160), disconnect = UiLayout.Button("断开", 90);
-    private readonly Label state = new() { AutoSize = true, Text = "● 未连接", ForeColor = Color.DimGray }, feed = UiLayout.Help("Clash 本地规则 · 未启用");
+    private readonly CheckBox remember = new() { Text = "加密保存凭据", AutoSize = true }, retry = new() { Text = "断线后自动重连", AutoSize = true };
+    private readonly Button connect = UiLayout.Primary("连接虚拟机", 160), disconnect = UiLayout.Button("断开", 90);
+    private readonly Label state = new StatusBadge { Text = "● 未连接", ForeColor = Color.DimGray }, feed = UiLayout.Help("Clash 本地规则 · 未启用");
     private readonly NotifyIcon tray = new() { Text = "Host2VMRelay" };
     private Icon? windowIcon, trayIcon;
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 1500 };
     private bool busy, wanted, quitting;
     private DateTime nextRetry;
     private string existingClashScript = "";
-    private readonly TabControl tabs = new() { Dock = DockStyle.Fill };
+    private readonly TabControl tabs = new WorkspaceTabs();
 
     public MainForm()
     {
         settings = Settings.Load();
-        SuspendLayout();
-        Text = "Host2VMRelay";
-        Font = UiLayout.BodyFont();
-        AutoScaleDimensions = new SizeF(96F, 96F);
-        AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(960, 740); MinimumSize = new Size(680, 520);
-        BackColor = Color.FromArgb(245, 247, 251); StartPosition = FormStartPosition.CenterScreen;
-        disconnect.Enabled = false;
-        UpdateIcons(96);
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), RowCount = 3, ColumnCount = 1 };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var heading = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = new Padding(0, 0, 0, 12) };
-        heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        var title = UiLayout.Help("Host2VMRelay"); title.Font = new Font(Font.FontFamily, 22F, FontStyle.Bold, GraphicsUnit.Point);
-        heading.Controls.Add(title);
-        heading.Controls.Add(UiLayout.Help("虚拟机 SSH 隧道 · Clash 分流 · 托盘后台运行"));
-        UiLayout.WrapLabels(heading);
-        layout.Controls.Add(heading, 0, 0); layout.Controls.Add(tabs, 0, 1); layout.Controls.Add(feed, 0, 2);
-        UiLayout.WrapLabels(layout); Controls.Add(layout);
-        BuildConnection(); BuildRules(); BuildClash(); BuildLog();
+        SuspendLayout(); DoubleBuffered = true;
+        Text = "Host2VMRelay"; Font = UiLayout.BodyFont(); ForeColor = UiTheme.Ink;
+        AutoScaleDimensions = new SizeF(96F, 96F); AutoScaleMode = AutoScaleMode.Dpi;
+        ClientSize = new Size(1100, 780); MinimumSize = new Size(680, 520);
+        BackColor = UiTheme.Canvas; StartPosition = FormStartPosition.CenterScreen;
+        disconnect.Enabled = false; UpdateIcons(96);
+        BuildShell(); BuildConnection(); BuildRules(); BuildClash(); BuildLog(); RefreshNavigation();
         host.Text = settings.Host; port.Value = settings.Port; user.Text = settings.User; socksPort.Value = settings.SocksPort;
         keyPath.Text = settings.KeyPath; auth.SelectedIndex = settings.UseKey ? 1 : 0;
         remember.Checked = settings.RememberSecret; retry.Checked = settings.Reconnect; ruleText.Text = settings.Rules.Replace("\n", Environment.NewLine);
@@ -57,10 +41,11 @@ public sealed partial class MainForm : Form
         catch { Log("保存的密码无法在当前 Windows 用户下解密，请重新输入。"); }
         try { ClashRuleFile.Disable(); }
         catch (Exception ex) { Log("无法初始化 Clash 本地规则文件：" + ex.Message); }
-        var menu = new ContextMenuStrip();
+        var menu = new ContextMenuStrip { Font = Font };
         menu.Items.Add("打开主窗口", null, (_, _) => Restore());
         menu.Items.Add("连接", null, async (_, _) => { if (!busy && client?.IsConnected != true) await Connect(); });
         menu.Items.Add("断开", null, (_, _) => Stop());
+        menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) =>
         {
             if (busy) { Restore(); MessageBox.Show(this, "正在连接，请等待本次连接完成后退出。"); return; }
@@ -70,7 +55,6 @@ public sealed partial class MainForm : Form
         connect.Click += async (_, _) => await Connect(); disconnect.Click += (_, _) => Stop();
         FormClosing += (_, e) =>
         {
-            // Do not cancel Windows shutdown; close-to-tray applies only to a user closing the window.
             if (!quitting && e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true; Hide();
@@ -95,13 +79,13 @@ public sealed partial class MainForm : Form
         };
         Shown += (_, _) =>
         {
-            UpdateIcons(DeviceDpi); UiLayout.FitToScreen(this, new Size(680, 520));
-            Log("已初始化 Clash 本地规则。先连接虚拟机，再到“接入 Clash”生成完整扩展脚本。");
+            UpdateIcons(DeviceDpi); UiLayout.FitToScreen(this, new Size(680, 520)); UpdateShellLayout();
+            Log("已初始化 Clash 本地规则。先连接虚拟机，再到“Clash 接入”生成完整扩展脚本。");
         };
         DpiChanged += (_, e) =>
         {
             UpdateIcons(e.DeviceDpiNew);
-            BeginInvoke(() => UiLayout.FitToScreen(this, new Size(680, 520)));
+            BeginInvoke(() => { UiLayout.FitToScreen(this, new Size(680, 520)); UpdateShellLayout(); });
         };
         ResumeLayout(true); timer.Start();
     }
@@ -113,7 +97,6 @@ public sealed partial class MainForm : Form
         Icon = large; tray.Icon = small;
         windowIcon?.Dispose(); trayIcon?.Dispose(); windowIcon = large; trayIcon = small;
     }
-
     private void Log(string text)
     {
         if (IsDisposed || Disposing || !IsHandleCreated) return;
@@ -123,5 +106,4 @@ public sealed partial class MainForm : Form
     }
     private void Error(Exception ex) { Log(ex.Message); MessageBox.Show(this, ex.Message, "操作失败", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
     private void TryDisableRules() { try { ClashRuleFile.Disable(); } catch (Exception ex) { Log("停用 Clash 本地规则失败：" + ex.Message); } }
-
 }
