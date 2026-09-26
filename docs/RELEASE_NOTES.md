@@ -1,37 +1,21 @@
-# Host2VMRelay v0.3.0
+# Host2VMRelay v0.4.0
 
-A Windows desktop app that transparently routes selected host requests through a virtual machine using SSH tunnels and domain/IP rules, with Clash TUN integration.
+## Changes
 
-## Downloads
+- Add a unified graphite, mint-green and amber app emblem. The vector source produces nine ICO sizes (16–256 pixels) during the build, and the same icon is used for the executable, window, tray, shortcuts and installer.
+- Enable per-monitor DPI layout with a 96-DPI design baseline and 12-point body/editor fonts. Content wraps or scrolls instead of shrinking the text to fit a laptop screen.
+- Add direct script generation and an optional existing-script import/merge window with full preview, one-click generation/copy and Save As.
+- Preserve user functions and lexical scope; run the original script before applying relay integration. Re-importing a generated script replaces its managed wrapper rather than nesting another copy.
+- Report invalid return values, asynchronous entry points and missing main functions when Clash evaluates the script. User scripts are never executed by the desktop application. YAML subscription configuration is not an accepted script format.
+- Fix script preparation incorrectly disabling forwarding rules while the tunnel is connected.
+- Keep all generated icons, binaries, intermediate files, checks, screenshots and release packages under artifacts/.
 
-- **[Download Windows installer](https://github.com/Noemion/host2vm-relay/releases/download/v0.3.0/Host2VMRelay-0.3.0-Setup.exe)** — recommended offline installer; automatically selects x64, x86, or ARM64. Includes the .NET desktop runtime and application dependencies.
-- **win-x64 / win-x86 / win-arm64 Portable.zip** — portable packages for the specified architecture.
-- **SHA256SUMS.txt** — checksums for all installer and portable assets.
+## Upgrade
 
-No preinstalled .NET, Python, Node.js, OpenSSH client, compiler, or network download is required to install the application. The installer creates a per-user installation, optional desktop shortcut, and uninstall entry.
+Install the new version, then generate and apply the complete Clash extension script once. For custom logic, choose the merge option and paste/import the original JavaScript. User configuration remains in the current Windows user's Documents/Host2VMRelay directory. Password encryption and the SSH host-key trust store are unchanged.
 
-## Changes in this release
+## Build and checks
 
-- Use a local Clash file provider so Clash stays quiet when Host2VMRelay is not running.
-- Store user configuration under Documents\\Host2VMRelay and migrate the previous LocalAppData settings on first use.
-- Route local build output to artifacts/ and add a root PowerShell build entry point.
-- Uninstall an existing installation before installing the new version.
-- Use the compact Host2VMRelay application name consistently.
+Use `./build.ps1 -Test` in Windows PowerShell to build and run the checks (Node.js is needed only for JavaScript tests). The existing Windows workflow also creates 100%, 125%, 150% and 200% synthetic layout screenshots. These layout tests are not a substitute for native DPI changes across physical monitors. End-to-end routing through the user's VM still requires their own environment.
 
-## Features
-
-- Password and private-key SSH authentication.
-- Windows DPAPI encrypted credential storage.
-- Tray operation and automatic reconnection.
-- Domain, IP and CIDR rules with a local file provider for Clash Verge.
-- Fake-IP DNS integration for selected domains.
-
-## Requirements and validation
-
-- Windows 10 (build 14393 or later) or Windows 11 desktop environment; use a maintained, updated Windows version.
-- The VM must run an SSH server with TCP forwarding enabled. Clash TUN must be configured separately for transparent routing.
-- TCP only; UDP forwarding is not supported.
-- x64 and x86 packages tested on Windows 11 x64; installer, application launch and uninstall tested locally. ARM64 is packaged but has not been tested on ARM64 hardware.
-- This installer is not code-signed.
-
-After installing, open **接入 Clash** in the application and apply the generated extension script once. [Clash Verge Rev](https://github.com/clash-verge-rev/clash-verge-rev) is required for TUN integration.
+The runtime remains bundled in release packages. The application and installer are not code-signed.

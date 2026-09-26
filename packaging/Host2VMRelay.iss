@@ -5,7 +5,7 @@
   #define OutputRoot "..\artifacts\release"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.3.0"
+  #define AppVersion "0.4.0"
 #endif
 
 [Setup]
@@ -26,6 +26,7 @@ OutputBaseFilename=Host2VMRelay-{#AppVersion}-Setup
 Compression=lzma2/fast
 SolidCompression=no
 WizardStyle=modern
+SetupIconFile=..\artifacts\assets\Host2VMRelay.ico
 UninstallDisplayIcon={app}\Host2VMRelay.exe
 CloseApplications=yes
 RestartApplications=no

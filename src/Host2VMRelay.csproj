@@ -6,15 +6,23 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Host2VMRelay</AssemblyName>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <Product>Host2VMRelay</Product>
     <Description>Selective host-to-VM forwarding through SSH and Clash TUN.</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AppIconPath>$(MSBuildThisFileDirectory)..\artifacts\assets\Host2VMRelay.ico</AppIconPath>
+    <ApplicationIcon>$(AppIconPath)</ApplicationIcon>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="$(AppIconPath)" LogicalName="Host2VMRelay.AppIcon" />
     <PackageReference Include="SSH.NET" Version="2026.0.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
+  <Target Name="GenerateApplicationIcon" BeforeTargets="PrepareForBuild"
+          Inputs="$(MSBuildProjectDirectory)\Assets\Host2VMRelay.svg;$(MSBuildProjectDirectory)\..\scripts\build-icon.ps1"
+          Outputs="$(AppIconPath)">
+    <Exec Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\scripts\build-icon.ps1&quot; -SourcePath &quot;$(MSBuildProjectDirectory)\Assets\Host2VMRelay.svg&quot; -OutputPath &quot;$(AppIconPath)&quot;" />
+  </Target>
 </Project>

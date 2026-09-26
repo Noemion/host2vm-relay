@@ -1,66 +1,52 @@
 # 开发指南
 
-## 目录结构
+## Windows 11 快速构建
+
+编译需要 .NET 8 SDK；执行脚本测试还需要 Node.js。制作安装包需要 Inno Setup 7。使用 Windows PowerShell 5.1 或 PowerShell 7，在仓库根目录运行：
+
+```powershell
+.\build.ps1                    # 编译
+.\build.ps1 -Sync -Run         # git pull --ff-only、编译、运行
+.\build.ps1 -Test              # 编译、自检、脚本回归、缩放布局截图
+.\build.ps1 -Portable          # 三种架构的便携包，不需要 Inno Setup
+.\build.ps1 -Package           # 便携包与安装包，自动寻找 Inno Setup 7
+.\build.ps1 -Package -Install  # 打包后安装，保留用户配置
+```
+
+也可显式传入 `-Iscc 'C:\Program Files\Inno Setup 7\ISCC.exe'`。首次克隆：
+
+```powershell
+git clone https://github.com/Noemion/host2vm-relay.git
+cd host2vm-relay
+.\build.ps1 -Test
+```
+
+执行策略阻止脚本时，可仅对当前调用使用：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Test
+```
+
+## 输出目录
 
 ```text
-src/                         Windows 桌面应用（唯一项目）
-  Host2VMRelay.csproj         项目与构建入口
-  Program.cs                 程序启动入口
-  Configuration/             配置读取与保存
-  Security/                  Windows DPAPI 密码加密
-  Networking/                规则解析
-  Integration/               Clash 扩展脚本与本地规则文件
-  UI/                        主窗口与交互
-  Diagnostics/               发行程序内置自检
-  Properties/PublishProfiles/ 自包含发布配置
-tests/                       Clash 脚本与 DNS 集成检查
-scripts/                     构建和打包脚本
-packaging/                   Windows 安装器定义
-docs/                        开发、部署和验证说明
-licenses/                    随安装包分发的第三方许可
-artifacts/                   所有本地构建、检查、发布产物，不提交到 Git
+artifacts/
+  assets/       从 SVG 生成的多尺寸 ICO
+  build/bin/    常规编译结果
+  build/obj/    中间文件
+  checks/       自检结果、实际生成的脚本、模拟缩放截图
+  publish/      win-x64 / win-x86 / win-arm64 自包含程序
+  release/      安装包、便携包、校验值
 ```
 
-## 构建与运行
+`Directory.Build.props` 在项目加载早期指定输出路径，并排除旧的 bin/obj 残留，避免旧编译文件被重复编译。`src/Assets/Host2VMRelay.svg` 是图标源文件；`scripts/build-icon.ps1` 使用 Windows 自带的 System.Drawing 生成 ICO，不依赖额外图形工具。
 
-在 Windows 上安装 .NET 8 SDK，从仓库根目录执行：
+## 界面与脚本
 
-```powershell
-.\build.ps1
+`UI/MainForm.cs` 管理主窗口和生命周期；Layout、Networking、Diagnostics 分别保留布局、连接和测试逻辑。所有窗体使用 96 DPI 设计基准与 DPI 自动缩放，字体使用 point，不再固定为像素。窗口按工作区限制外框尺寸，长内容保持可滚动。
 
-# 拉取最新代码后编译并运行
-.\build.ps1 -Sync -Run
+`ScriptComposer` 只包装与提取 JavaScript 文本，不执行脚本。原脚本置于独立词法作用域，实际执行由 Clash 的 JavaScript 引擎完成，然后接入 Host2VMRelay。生成格式保存 UTF-16 字符长度，用于再次导入时准确提取原脚本；用户直接修改生成文件中的原始内容导致长度变化时，需要重新提供原始脚本。不是通用 JavaScript 语法检查器或 YAML 合并器。
 
-# 生成便携包和安装包
-.\build.ps1 -Package -Iscc 'C:\\Program Files\\Inno Setup 7\\ISCC.exe'
-```
+自检导出 `artifacts/checks/script-cases.json`，Node.js 回归测试执行 C# 生成器的真实产物。测试覆盖辅助函数、箭头入口、Unicode、返回新对象、原地修改、早返回、异常传播、旧节点名迁移、DNS 模式和重复生成。
 
-.NET 项目入口为 `src/Host2VMRelay.csproj`，可直接用 Visual Studio 2022 打开，并安装“.NET 桌面开发”工作负载。
-
-## 检查
-
-以下命令在仓库根目录执行。脚本检查需要 Node.js，仅开发时使用。
-
-```powershell
-New-Item -ItemType Directory -Force artifacts/checks
-$app = '.\src\bin\Release\net8.0-windows\Host2VMRelay.exe'
-$result = Join-Path $PWD 'artifacts/checks/self-test.txt'
-$check = Start-Process $app -ArgumentList "--self-test `"$result`"" -Wait -PassThru
-Get-Content $result
-if ($check.ExitCode -ne 0) { throw 'Self-test failed' }
-node tests/test-script.cjs artifacts/checks/mihomo.json
-```
-
-程序保留 `--self-test` 诊断入口，用于验证实际发行 EXE 的规则、加密存储与 Clash 本地规则文件，检查逻辑放在 `Diagnostics/SelfTest.cs`。
-
-可选 DNS 集成检查：用独立 Mihomo 实例加载生成的 `mihomo.json`，监听其中指定的本机 DNS 端口 `10553`，再运行 `node tests/test-dns.cjs`。不要将测试配置覆盖到日常使用的 Clash 中。
-
-## 制作安装包
-
-```powershell
-.\scripts\build-release.ps1 -Iscc 'C:\Program Files\Inno Setup 7\ISCC.exe'
-```
-
-输出位于 `artifacts/release/`。详细参数、运行依赖与支持范围见 [部署说明](DEPLOYMENT.md)，已有测试结果见 [验证记录](VALIDATION.md)。
-
-GitHub Actions 使用同一套项目、检查脚本和打包入口。同一正式版本的 Release 附件保留不变；发布新版本时更新版本号和发布说明。
+`--smoke --ui-scale=150 <截图路径>` 使用独立配置目录和规则文件，不能读取或迁移用户账号、密码，也不修改用户正在使用的 Clash 规则。缩放参数仅用于模拟布局，不声称改变了 Windows 系统 DPI。真实的 125%/150%/200% 及跨屏切换仍需要在目标设备验收。

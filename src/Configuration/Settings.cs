@@ -17,27 +17,23 @@ public sealed class Settings
     public string TestUrl { get; set; } = "https://example.com/";
     public Dictionary<string, string> HostKeys { get; set; } = new();
 
-    public static string Folder = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-        "Host2VMRelay");
-
+    private static readonly string DefaultFolder = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Host2VMRelay");
+    public static string Folder = DefaultFolder;
     private static string LegacyFolder => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Host2VMRelay");
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Host2VMRelay");
 
     public static Settings Load()
     {
         Directory.CreateDirectory(Folder);
         var path = Path.Combine(Folder, "settings.json");
-        if (!File.Exists(path))
+        // Only the real default profile is eligible for migration, never diagnostic overrides.
+        if (!File.Exists(path) && string.Equals(Path.GetFullPath(Folder), Path.GetFullPath(DefaultFolder), StringComparison.OrdinalIgnoreCase))
         {
             var legacy = Path.Combine(LegacyFolder, "settings.json");
             if (File.Exists(legacy)) File.Copy(legacy, path, false);
         }
-
-        return File.Exists(path)
-            ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(path)) ?? new()
-            : new();
+        return File.Exists(path) ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(path)) ?? new() : new();
     }
 
     public void Save()

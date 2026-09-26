@@ -1,61 +1,102 @@
+using System.Text.Json;
+
 namespace Host2VMRelay;
 
 internal static class SelfTest
 {
     public static void Run(string output)
     {
+        output = Path.GetFullPath(output);
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         var lines = new List<string>();
-        try {
+        try
+        {
             void Check(bool ok, string message) { if (!ok) throw new Exception(message); lines.Add("PASS " + message); }
             lines.Add("INFO Architecture: " + System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture);
-            var runtimeModule = System.Diagnostics.Process.GetCurrentProcess().Modules.Cast<System.Diagnostics.ProcessModule>().FirstOrDefault(m => m.ModuleName.Equals("coreclr.dll", StringComparison.OrdinalIgnoreCase));
-            lines.Add("INFO Runtime module: " + runtimeModule?.FileName);
-
             var compiled = Rules.Compile("code.example.com\n*.example.com\n10.20.30.40\n10.20.30.0/24\n2001:db8::1\n# comment\ncode.example.com");
             Check(compiled.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 5, "rule normalization and deduplication");
             Check(compiled.Contains("DOMAIN-SUFFIX,example.com") && compiled.Contains("IP-CIDR6,2001:db8::1/128,no-resolve"), "suffix and IPv6 rules");
-            foreach (var invalid in new[] { "https://code.example.com/", "1.2.3.4/33", "a.com,DIRECT", "999.999.999.999", "a b.com" }) {
-                bool rejected = false; try { Rules.Compile(invalid); } catch (FormatException) { rejected = true; } Check(rejected, "reject " + invalid);
+            foreach (var invalid in new[] { "https://code.example.com/", "1.2.3.4/33", "a.com,DIRECT", "999.999.999.999", "a b.com" })
+            {
+                bool rejected = false; try { Rules.Compile(invalid); } catch (FormatException) { rejected = true; }
+                Check(rejected, "reject " + invalid);
             }
-
             var encrypted = SecretStore.Protect("test-password-中文");
             Check(!encrypted.Contains("test-password") && SecretStore.Unprotect(encrypted) == "test-password-中文", "DPAPI password roundtrip");
-
-            var settingsPath = Path.Combine(Path.GetTempPath(), "Host2VMRelaySettingsTest-" + Guid.NewGuid());
-            var originalSettings = Settings.Folder;
-            try {
-                Settings.Folder = settingsPath;
+            var root = Path.Combine(Path.GetDirectoryName(output)!, "self-test-data-" + Guid.NewGuid());
+            string originalSettings = Settings.Folder, originalRules = ClashRuleFile.Folder;
+            try
+            {
+                Settings.Folder = Path.Combine(root, "settings");
+                ClashRuleFile.Folder = Path.Combine(root, "rules");
+                Check(Settings.Load().User == "", "diagnostic profile does not migrate personal settings");
                 new Settings { ProtectedSecret = encrypted }.Save();
-                Check(Settings.Load().ProtectedSecret == encrypted && !File.ReadAllText(Path.Combine(settingsPath, "settings.json")).Contains("test-password"), "settings persist ciphertext only");
-            } finally {
-                Settings.Folder = originalSettings;
-                Directory.Delete(settingsPath, true);
-            }
-
-            var rulePath = Path.Combine(Path.GetTempPath(), "Host2VMRelayRulesTest-" + Guid.NewGuid());
-            var originalRuleFolder = ClashRuleFile.Folder;
-            try {
-                ClashRuleFile.Folder = rulePath;
+                Check(Settings.Load().ProtectedSecret == encrypted && !File.ReadAllText(Path.Combine(Settings.Folder, "settings.json")).Contains("test-password"), "settings persist ciphertext only");
                 ClashRuleFile.Disable();
-                Check(File.ReadAllText(ClashRuleFile.FilePath) == ClashRuleFile.DisabledPayload, "disabled Clash rule file");
+                Check(File.ReadAllText(ClashRuleFile.FilePath) == ClashRuleFile.DisabledPayload, "disabled local rule file");
                 ClashRuleFile.Write(compiled);
-                Check(File.ReadAllText(ClashRuleFile.FilePath) == compiled, "local Clash rule file update");
-            } finally {
-                ClashRuleFile.Folder = originalRuleFolder;
-                Directory.Delete(rulePath, true);
+                Check(File.ReadAllText(ClashRuleFile.FilePath) == compiled, "local rule update");
+                var timestamp = File.GetLastWriteTimeUtc(ClashRuleFile.FilePath);
+                ClashRuleFile.Write(compiled);
+                Check(File.GetLastWriteTimeUtc(ClashRuleFile.FilePath) == timestamp, "unchanged rules are not rewritten");
             }
-
-            var ipv4 = ClashScript.Generate(1080, "192.168.50.8");
-            Check(ipv4.Contains("IP-CIDR,192.168.50.8/32,DIRECT"), "custom VM IPv4 bypass");
-            Check(ipv4.Contains("type: \"file\"") && !ipv4.Contains("127.0.0.1:17861"), "local Clash rule provider");
+            finally
+            {
+                Settings.Folder = originalSettings; ClashRuleFile.Folder = originalRules;
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+            foreach (int size in new[] { 16, 20, 24, 32, 40, 48, 64, 128, 256 })
+            {
+                using var icon = AppIcon.Load(size);
+                Check(icon.Width == size && icon.Height == size, "embedded application icon " + size);
+            }
+            Check(ClashScript.Generate(1080, "192.168.50.8").Contains("IP-CIDR,192.168.50.8/32,DIRECT"), "custom VM IPv4 bypass");
             Check(ClashScript.Generate(1080, "fd00::8").Contains("IP-CIDR6,fd00::8/128,DIRECT"), "custom VM IPv6 bypass");
-            Check(ClashScript.Generate(1081).Contains("port: 1081") && !ClashScript.Generate(1081).Contains("__SOCKS_PORT__"), "script port generation");
-
+            foreach (int invalid in new[] { 0, 65536 })
+            {
+                bool rejected = false; try { ClashScript.Generate(invalid); } catch (ArgumentOutOfRangeException) { rejected = true; }
+                Check(rejected, "reject invalid SOCKS port " + invalid);
+            }
+            string original = "const label = '中文 😀 __SOCKS_PORT__';\nfunction main(config, profileName) { config.label = label; return config; }";
+            string first = ClashScript.Generate(1080, "192.168.50.8", original);
+            string second = ClashScript.Generate(1081, "fd00::8", first);
+            Check(ScriptComposer.ExtractOriginal(first) == original && ScriptComposer.ExtractOriginal(second) == original, "lossless user source extraction");
+            Check(second == ClashScript.Generate(1081, "fd00::8", original), "regeneration replaces wrapper rather than nesting");
+            Check(ScriptComposer.ExtractOriginal(first.Replace("\n", "\r\n")) == original, "CRLF envelope roundtrip");
+            bool badMarker = false;
+            try { ScriptComposer.ExtractOriginal(first.Replace("original-length: ", "original-length: x")); } catch (FormatException) { badMarker = true; }
+            Check(badMarker, "reject damaged generated markers");
+            bool tooLarge = false;
+            try { ClashScript.Generate(1080, existingScript: new string('x', ScriptComposer.MaxSourceLength + 1)); } catch (ArgumentException) { tooLarge = true; }
+            Check(tooLarge, "reject oversized source");
+            ExportScriptCases(Path.Combine(Path.GetDirectoryName(output)!, "script-cases.json"));
+            lines.Add("PASS actual C# generated scripts exported for JavaScript execution checks");
             File.WriteAllText(output, string.Join(Environment.NewLine, lines));
-        } catch (Exception ex) {
-            lines.Add("FAIL " + ex);
-            File.WriteAllText(output, string.Join(Environment.NewLine, lines));
-            Environment.ExitCode = 1;
         }
+        catch (Exception ex)
+        {
+            lines.Add("FAIL " + ex); File.WriteAllText(output, string.Join(Environment.NewLine, lines)); Environment.ExitCode = 1;
+        }
+    }
+
+    private static void ExportScriptCases(string path)
+    {
+        var cases = new Dictionary<string, string?>
+        {
+            ["empty"] = null,
+            ["merge"] = "const label = '中文 😀 __SOCKS_PORT__'; function helper(x) { return x + ':kept'; } function main(config, profileName) { config.label = helper(label); config.profile = profileName; config.rules.unshift('DOMAIN,user.example,DIRECT'); return config; }",
+            ["arrow"] = "const main = (config, profileName) => ({ ...config, profile: profileName, arrow: true });",
+            ["mutating"] = "function main(config) { config.mutated = true; }",
+            ["early"] = "function main(config, profileName) { if (profileName === 'test') return { ...config, early: true }; return config; }",
+            ["throws"] = "function main(config) { throw new Error('user failure'); }",
+            ["missing"] = "const example = 'function main(config) { return config; }';",
+            ["async"] = "async function main(config) { return config; }",
+            ["null"] = "function main(config) { return null; }",
+            ["array"] = "function main(config) { return []; }",
+            ["comment"] = "function main(config) { config.comment = true; return config; } // trailing comment"
+        };
+        var generated = cases.ToDictionary(x => x.Key, x => ClashScript.Generate(1080, "192.168.229.10", x.Value));
+        generated["regenerated"] = ClashScript.Generate(1081, "fd00::8", generated["merge"]);
+        File.WriteAllText(path, JsonSerializer.Serialize(generated, new JsonSerializerOptions { WriteIndented = true }));
     }
 }

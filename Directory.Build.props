@@ -2,5 +2,6 @@
   <PropertyGroup>
     <BaseOutputPath>$(MSBuildThisFileDirectory)artifacts\build\bin\</BaseOutputPath>
     <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)artifacts\build\obj\</BaseIntermediateOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);**/bin/**;**/obj/**;$(MSBuildThisFileDirectory)artifacts/**</DefaultItemExcludes>
   </PropertyGroup>
 </Project>
