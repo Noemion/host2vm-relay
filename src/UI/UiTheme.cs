@@ -2,7 +2,6 @@ using System.Drawing.Drawing2D;
 
 namespace Host2VMRelay;
 
-// Shared visual language; system colours remain available in High Contrast mode.
 internal static class UiTheme
 {
     public static Color Canvas => SystemInformation.HighContrast ? SystemColors.Window : Color.FromArgb(246, 247, 249);
@@ -32,8 +31,7 @@ internal class CardPanel : TableLayoutPanel
 {
     public CardPanel()
     {
-        DoubleBuffered = true;
-        SetStyle(ControlStyles.ResizeRedraw, true);
+        DoubleBuffered = true; SetStyle(ControlStyles.ResizeRedraw, true);
         AutoSize = true; AutoSizeMode = AutoSizeMode.GrowAndShrink; Dock = DockStyle.Top;
         ColumnCount = 1; ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         Padding = new Padding(22); Margin = new Padding(0, 0, 0, 18);
@@ -41,11 +39,9 @@ internal class CardPanel : TableLayoutPanel
     }
     protected override void OnPaintBackground(PaintEventArgs e)
     {
-        e.Graphics.Clear(Parent?.BackColor ?? UiTheme.Canvas);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.Clear(Parent?.BackColor ?? UiTheme.Canvas); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var shape = UiTheme.Round(new RectangleF(.5F, .5F, Math.Max(0, Width - 1F), Math.Max(0, Height - 1F)), UiTheme.Px(this, 14));
-        using var fill = new SolidBrush(BackColor);
-        using var border = new Pen(UiTheme.Line);
+        using var fill = new SolidBrush(BackColor); using var border = new Pen(UiTheme.Line);
         e.Graphics.FillPath(fill, shape); e.Graphics.DrawPath(border, shape);
     }
 }
@@ -55,30 +51,24 @@ internal sealed class EntryFrame : TableLayoutPanel
     private readonly Control editor;
     public EntryFrame(Control editor, bool multiline = false, int editorHeight = 240)
     {
-        this.editor = editor;
-        DoubleBuffered = true; SetStyle(ControlStyles.ResizeRedraw, true);
-        ColumnCount = 1; RowCount = 1;
-        ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        this.editor = editor; DoubleBuffered = true; SetStyle(ControlStyles.ResizeRedraw, true);
+        ColumnCount = 1; RowCount = 1; ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         RowStyles.Add(new RowStyle(multiline ? SizeType.Percent : SizeType.AutoSize, 100));
         Dock = DockStyle.Top; Margin = Padding.Empty; Padding = new Padding(12, 10, 12, 10);
         BackColor = UiTheme.Field; AutoSize = !multiline;
         if (multiline) { Height = editorHeight; MinimumSize = new Size(0, editorHeight); }
         else { AutoSizeMode = AutoSizeMode.GrowAndShrink; MinimumSize = new Size(0, 44); }
-        editor.Margin = Padding.Empty;
-        editor.BackColor = UiTheme.Field; editor.ForeColor = UiTheme.Ink;
+        editor.Margin = Padding.Empty; editor.BackColor = UiTheme.Field; editor.ForeColor = UiTheme.Ink;
         if (editor is TextBox text) text.BorderStyle = BorderStyle.None;
         if (editor is NumericUpDown number) number.BorderStyle = BorderStyle.None;
         if (editor is ComboBox combo) combo.FlatStyle = FlatStyle.Flat;
-        editor.Dock = multiline ? DockStyle.Fill : DockStyle.Top;
-        Controls.Add(editor, 0, 0);
-        editor.Enter += (_, _) => Invalidate(); editor.Leave += (_, _) => Invalidate();
-        editor.EnabledChanged += (_, _) => Invalidate();
+        editor.Dock = multiline ? DockStyle.Fill : DockStyle.Top; Controls.Add(editor, 0, 0);
+        editor.Enter += (_, _) => Invalidate(); editor.Leave += (_, _) => Invalidate(); editor.EnabledChanged += (_, _) => Invalidate();
         AccessibleRole = AccessibleRole.Grouping;
     }
     protected override void OnPaintBackground(PaintEventArgs e)
     {
-        e.Graphics.Clear(Parent?.BackColor ?? UiTheme.Surface);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.Clear(Parent?.BackColor ?? UiTheme.Surface); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         float inset = Math.Max(1, UiTheme.Px(this, 1));
         using var shape = UiTheme.Round(new RectangleF(inset, inset, Math.Max(0, Width - 2 * inset - 1), Math.Max(0, Height - 2 * inset - 1)), UiTheme.Px(this, 8));
         using var fill = new SolidBrush(BackColor);
@@ -89,26 +79,24 @@ internal sealed class EntryFrame : TableLayoutPanel
 
 internal class ActionButton : Button
 {
-    private bool hot, pressed;
-    private bool primary;
+    protected bool Hot { get; private set; }
+    private bool pressed, primary;
     public bool Primary { get => primary; set { primary = value; Invalidate(); } }
     public ActionButton()
     {
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0;
         AutoSize = true; AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        MinimumSize = new Size(100, 42); Padding = new Padding(16, 8, 16, 8);
-        Margin = new Padding(0, 4, 10, 4); Cursor = Cursors.Hand;
+        MinimumSize = new Size(100, 42); Padding = new Padding(16, 8, 16, 8); Margin = new Padding(0, 4, 10, 4); Cursor = Cursors.Hand;
         UseVisualStyleBackColor = false; BackColor = UiTheme.Surface; ForeColor = UiTheme.Ink;
     }
     public override Size GetPreferredSize(Size proposedSize)
     {
         Size text = TextRenderer.MeasureText(Text, Font, Size.Empty, TextFormatFlags.SingleLine);
-        return new Size(Math.Max(MinimumSize.Width, text.Width + Padding.Horizontal + 2),
-            Math.Max(MinimumSize.Height, text.Height + Padding.Vertical + 2));
+        return new Size(Math.Max(MinimumSize.Width, text.Width + Padding.Horizontal + 2), Math.Max(MinimumSize.Height, text.Height + Padding.Vertical + 2));
     }
-    protected override void OnMouseEnter(EventArgs e) { hot = true; Invalidate(); base.OnMouseEnter(e); }
-    protected override void OnMouseLeave(EventArgs e) { hot = pressed = false; Invalidate(); base.OnMouseLeave(e); }
+    protected override void OnMouseEnter(EventArgs e) { Hot = true; Invalidate(); base.OnMouseEnter(e); }
+    protected override void OnMouseLeave(EventArgs e) { Hot = pressed = false; Invalidate(); base.OnMouseLeave(e); }
     protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) pressed = true; Invalidate(); base.OnMouseDown(e); }
     protected override void OnMouseUp(MouseEventArgs e) { pressed = false; Invalidate(); base.OnMouseUp(e); }
     protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Space) pressed = true; Invalidate(); base.OnKeyDown(e); }
@@ -116,18 +104,16 @@ internal class ActionButton : Button
     protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
     protected override void OnLostFocus(EventArgs e) { pressed = false; Invalidate(); base.OnLostFocus(e); }
     protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
-    protected virtual Color FillColor => !Enabled ? UiTheme.Field : Primary ? (pressed ? Color.FromArgb(15, 73, 60) : hot ? Color.FromArgb(31, 119, 99) : UiTheme.Accent) : pressed ? UiTheme.Selection : hot ? UiTheme.Field : UiTheme.Surface;
+    protected virtual Color FillColor => !Enabled ? UiTheme.Field : Primary ? (pressed ? Color.FromArgb(15, 73, 60) : Hot ? Color.FromArgb(31, 119, 99) : UiTheme.Accent) : pressed ? UiTheme.Selection : Hot ? UiTheme.Field : UiTheme.Surface;
     protected virtual Color TextColor => !Enabled ? SystemColors.GrayText : Primary ? Color.White : UiTheme.Ink;
+    protected virtual Color BorderColor => Primary && Enabled ? FillColor : UiTheme.Line;
     protected override void OnPaint(PaintEventArgs e)
     {
         if (SystemInformation.HighContrast) { base.OnPaint(e); return; }
-        e.Graphics.Clear(Parent?.BackColor ?? UiTheme.Surface);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.Clear(Parent?.BackColor ?? UiTheme.Surface); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var shape = UiTheme.Round(new RectangleF(1, 1, Math.Max(0, Width - 3), Math.Max(0, Height - 3)), UiTheme.Px(this, 9));
-        using var fill = new SolidBrush(FillColor);
-        using var border = new Pen(Primary && Enabled ? FillColor : UiTheme.Line);
-        e.Graphics.FillPath(fill, shape); e.Graphics.DrawPath(border, shape);
-        PaintCaption(e.Graphics);
+        using var fill = new SolidBrush(FillColor); using var border = new Pen(BorderColor);
+        e.Graphics.FillPath(fill, shape); e.Graphics.DrawPath(border, shape); PaintCaption(e.Graphics);
         if (Focused && ShowFocusCues)
         {
             Rectangle focus = ClientRectangle; focus.Inflate(-UiTheme.Px(this, 5), -UiTheme.Px(this, 5));
@@ -143,9 +129,19 @@ internal sealed class NavigationButton : ActionButton
     private bool selected;
     public int PageIndex { get; init; }
     public bool Compact { get; set; }
-    public bool Selected { get => selected; set { selected = value; AccessibleDescription = value ? "当前页面" : "切换页面"; Invalidate(); } }
+    public bool Selected
+    {
+        get => selected;
+        set
+        {
+            selected = value; AccessibleDescription = value ? "当前页面" : "切换页面";
+            if (SystemInformation.HighContrast) { BackColor = value ? SystemColors.Highlight : SystemColors.Control; ForeColor = value ? SystemColors.HighlightText : SystemColors.ControlText; }
+            Invalidate();
+        }
+    }
     public NavigationButton() { MinimumSize = new Size(150, 46); Padding = new Padding(38, 10, 14, 10); }
-    protected override Color FillColor => Selected ? UiTheme.Selection : UiTheme.Sidebar;
+    protected override Color FillColor => Selected ? UiTheme.Selection : Hot ? UiTheme.Field : UiTheme.Sidebar;
+    protected override Color BorderColor => FillColor;
     protected override Color TextColor => Selected ? UiTheme.Accent : UiTheme.Muted;
     protected override void PaintCaption(Graphics graphics)
     {
@@ -182,21 +178,18 @@ internal sealed class StatusBadge : Label
     protected override void OnPaintBackground(PaintEventArgs e)
     {
         if (SystemInformation.HighContrast) { base.OnPaintBackground(e); return; }
-        e.Graphics.Clear(Parent?.BackColor ?? UiTheme.Canvas);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.Clear(Parent?.BackColor ?? UiTheme.Canvas); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var shape = UiTheme.Round(new RectangleF(0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1)), UiTheme.Px(this, 16));
-        using var fill = new SolidBrush(Color.FromArgb(235, 240, 237));
-        e.Graphics.FillPath(fill, shape);
+        using var fill = new SolidBrush(Color.FromArgb(235, 240, 237)); e.Graphics.FillPath(fill, shape);
     }
 }
 
-// Keep native page selection and keyboard behaviour; navigation lives in the shell.
 internal sealed class WorkspaceTabs : TabControl
 {
-    public WorkspaceTabs() { Dock = DockStyle.Fill; Margin = Padding.Empty; Padding = Point.Empty; TabStop = false; }
+    public WorkspaceTabs() { Dock = DockStyle.Fill; Margin = System.Windows.Forms.Padding.Empty; Padding = Point.Empty; TabStop = false; }
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == 0x1328 && !DesignMode) { m.Result = IntPtr.Zero; return; } // TCM_ADJUSTRECT
+        if (m.Msg == 0x1328 && !DesignMode) { m.Result = IntPtr.Zero; return; }
         base.WndProc(ref m);
     }
 }
