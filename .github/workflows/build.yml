@@ -51,6 +51,13 @@ jobs:
       - name: Publish all architectures and offline installer
         shell: pwsh
         run: .\scripts\build-release.ps1 -Iscc $env:INNO_COMPILER
+      - name: Upload installer icon evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Host2VMRelay-installer-icons
+          path: artifacts/checks/installer-icon/
+          if-no-files-found: ignore
       - name: Check packaged x64 and x86 applications
         shell: pwsh
         run: |
@@ -67,9 +74,34 @@ jobs:
           name: Host2VMRelay-Windows
           path: artifacts/release/
           if-no-files-found: error
+  network:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build production transport integration harness
+        run: dotnet build tests/TransportHarness/TransportHarness.csproj -c Release
+      - name: Test UDP bridge protocol and real sockets
+        run: python3 tests/test-udp-helper.py
+      - name: Test transparent TUN, SSH and automatic host fallback
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! test -x /usr/sbin/sshd; then sudo apt-get update -qq && sudo apt-get install -y openssh-server; fi
+          sudo --preserve-env=GH_TOKEN,PATH python3 tests/test-transparent-network.py
+      - name: Upload transport acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Host2VMRelay-network-checks
+          path: artifacts/checks/network/
+          if-no-files-found: ignore
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: windows
+    needs: [windows, network]
     runs-on: windows-latest
     permissions:
       contents: write

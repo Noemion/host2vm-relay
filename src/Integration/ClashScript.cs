@@ -11,7 +11,6 @@ public static class ClashScript
         if (port is < 1 or > 65535) throw new ArgumentOutOfRangeException(nameof(port), "SOCKS5 端口必须为 1–65535。");
         if (!IPAddress.TryParse(host, out var address)) throw new ArgumentException("虚拟机地址请填写 IPv4 或 IPv6，以便生成准确的 TUN 绕过规则。");
         string cidr = address + (address.AddressFamily == AddressFamily.InterNetwork ? "/32" : "/128");
-        // Substitute only our template, never the user's source text.
         string relay = Template.Replace("__SOCKS_PORT__", port.ToString(CultureInfo.InvariantCulture))
             .Replace("__VM_CIDR__", cidr)
             .Replace("__VM_RULE_TYPE__", address.AddressFamily == AddressFamily.InterNetwork ? "IP-CIDR" : "IP-CIDR6");
@@ -20,8 +19,6 @@ public static class ClashScript
 
     private const string Template = """
 function main(config, profileName) {
-  // These TUN fields belong to Clash Verge Settings, not extension scripts.
-  // Capture deep copies before the imported script can mutate arrays in place.
   const guiTunKeys = ["enable", "stack", "device", "auto-route", "route-exclude-address",
     "auto-redirect", "auto-detect-interface", "dns-hijack", "strict-route", "mtu"];
   const inputTun = config.tun ?? {};
@@ -32,7 +29,6 @@ function main(config, profileName) {
       savedTun[key] = value === undefined ? undefined : JSON.parse(JSON.stringify(value));
     }
   }
-  // Run the user's original entry point first, in its own lexical scope.
   if (typeof __h2vmOriginalMain !== "function" || __h2vmOriginalMain === main) {
     throw new Error("原有扩展脚本必须提供 main(config, profileName) 函数。");
   }
@@ -44,12 +40,11 @@ function main(config, profileName) {
   for (const proxy of config.proxies ?? []) {
     if (proxy.type === "mieru") proxy.udp = true;
   }
-  const node = "Host2VMRelay";
-  const oldNode = "Host2VM Relay"; // Migrate configurations generated before 0.3.
+  const node = "Host2VMRelay", oldNode = "Host2VM Relay";
   const provider = "host2vm-relay-rules";
   config.proxies = [
     ...(config.proxies ?? []).filter(p => p.name !== node && p.name !== oldNode),
-    { name: node, type: "socks5", server: "127.0.0.1", port: __SOCKS_PORT__, udp: false }
+    { name: node, type: "socks5", server: "127.0.0.1", port: __SOCKS_PORT__, udp: true }
   ];
   for (const group of config["proxy-groups"] ?? []) {
     if (Array.isArray(group.proxies)) {
@@ -61,15 +56,28 @@ function main(config, profileName) {
     type: "file", behavior: "classical", format: "text",
     path: "./rules/host2vm-relay-rules.txt", interval: 3
   };
+  // PASS is FIRST: its probes fail, so a healthy relay is preferred. When all
+  // members fail, Mihomo chooses the first; PASS resumes the original rules.
+  const tcpGroup = "Host2VMRelay-TCP", udpGroup = "Host2VMRelay-UDP";
+  config["proxy-groups"] = (config["proxy-groups"] ?? []).filter(g => ![tcpGroup, udpGroup].includes(g.name));
+  for (const [name, kind] of [[tcpGroup, "tcp"], [udpGroup, "udp"]]) {
+    config["proxy-groups"].push({name, type: "fallback", proxies: ["PASS", node],
+      url: "http://health.host2vm-relay.invalid/" + kind,
+      interval: 3, timeout: 2000, lazy: false, "expected-status": "204", hidden: true});
+  }
+  const udpProvider = "host2vm-relay-udp-rules";
+  config["rule-providers"][udpProvider] = {
+    type: "file", behavior: "classical", format: "text",
+    path: "./rules/host2vm-relay-udp-rules.txt", interval: 3
+  };
   const first = [
     "__VM_RULE_TYPE__,__VM_CIDR__,DIRECT,no-resolve",
     "IP-CIDR,127.0.0.0/8,DIRECT,no-resolve",
-    "RULE-SET," + provider + "," + node
+    "AND,((NETWORK,tcp),(RULE-SET," + provider + "))," + tcpGroup,
+    "AND,((NETWORK,udp),(RULE-SET," + udpProvider + "))," + udpGroup
   ];
-  const ownedRule = r => [node, oldNode].some(n => r.endsWith("," + n) || r.endsWith("," + n + ",no-resolve"));
+  const ownedRule = r => [node, oldNode, tcpGroup, udpGroup].some(n => r.endsWith("," + n) || r.endsWith("," + n + ",no-resolve"));
   config.rules = [...first, ...(config.rules ?? []).filter(r => !first.includes(r) && !ownedRule(r))];
-
-  // Preserve existing Fake-IP exceptions while putting selected domains first.
   const dns = config.dns = config.dns ?? {};
   const oldMode = dns["fake-ip-filter-mode"] ?? "blacklist";
   const oldFilter = dns["fake-ip-filter"] ?? [];
@@ -93,21 +101,14 @@ function main(config, profileName) {
   dns["enhanced-mode"] = "fake-ip";
   dns["fake-ip-filter-mode"] = "rule";
   dns["fake-ip-filter"] = [priority, ...filters];
-  // Restore the incoming GUI values, including absence. This also neutralizes
-  // TUN writes from imported older scripts without rewriting their source.
-  // Keep non-GUI TUN options and all unrelated user configuration intact.
   if (config.tun != null || Object.keys(savedTun).length > 0) {
     const tun = config.tun = config.tun ?? {};
-    if (typeof tun !== "object" || Array.isArray(tun)) {
-      throw new Error("TUN 配置必须为对象，请检查原有扩展脚本。");
-    }
+    if (typeof tun !== "object" || Array.isArray(tun)) throw new Error("TUN 配置必须为对象，请检查原有扩展脚本。");
     for (const key of guiTunKeys) {
       if (Object.prototype.hasOwnProperty.call(savedTun, key)) tun[key] = savedTun[key];
       else delete tun[key];
     }
   }
-  // 在 Clash 的 TUN 设置中开启自动路由，DNS 劫持添加 any:53、tcp://any:53，
-  // 路由排除添加 __VM_CIDR__；不要在扩展脚本里写入这些界面字段。
   return config;
 }
 """;

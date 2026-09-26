@@ -49,8 +49,10 @@ for (const mode of ['blacklist', 'whitelist', 'rule']) {
   assert.equal(result.dns['fake-ip-filter'][0], 'RULE-SET,host2vm-relay-rules,fake-ip');
   assert(result.dns['fake-ip-filter'].some(r => r.includes(mode === 'rule' ? 'old.example' : 'exact.example')));
   const again = execute(scripts.empty, result);
-  assert.equal(again.proxies.length, 2); assert.equal(again.rules.length, 4);
+  assert.equal(again.proxies.length, 2); assert.equal(again.rules.length, 5);
   assert.equal(again.dns['fake-ip-filter'].filter(x => x === 'RULE-SET,host2vm-relay-rules,fake-ip').length, 1);
+  assert.equal(again['proxy-groups'].length, 2);
+  for (const group of again['proxy-groups']) assert.deepEqual(Array.from(group.proxies), ['PASS','Host2VMRelay']);
 }
 let result = execute(scripts.merge, base());
 assert.equal(result.label, '中文 😀 __SOCKS_PORT__:kept'); assert.equal(result.profile, 'test');
@@ -61,7 +63,7 @@ for (const key of ['throws','missing','async','null','array']) assert.throws(() 
 result = execute(scripts.regenerated, base());
 assert.equal(result.proxies.find(p => p.name === 'Host2VMRelay').port, 1081);
 assert(result.rules.includes('IP-CIDR6,fd00::8/128,DIRECT,no-resolve'));
-assert.equal((scripts.regenerated.match(/Host2VMRelay composed script v1/g) || []).length, 1);
+assert.equal((scripts.regenerated.match(/Host2VMRelay composed script v[12]/g) || []).length, 1);
 const legacy = base();
 legacy.proxies.push({name:'Host2VM Relay',type:'socks5',server:'127.0.0.1',port:9999});
 legacy.rules.unshift('RULE-SET,host2vm-relay-rules,Host2VM Relay');
@@ -73,8 +75,6 @@ assert.deepEqual(Array.from(result['proxy-groups'][0].proxies),['Host2VMRelay','
 assert(!result.rules.some(r=>r.includes(',Host2VM Relay'))); assert(result['rule-providers'].keep);
 const provider = result['rule-providers']['host2vm-relay-rules'];
 assert.equal(provider.type,'file'); assert.equal(provider.path,'./rules/host2vm-relay-rules.txt'); assert(!('url' in provider));
-// Clash Verge compares Settings-owned TUN values before/after each extension.
-// Deleting inherited keys is also a conflicting change, not a way to silence it.
 const guiTunKeys = ['enable','stack','device','auto-route','route-exclude-address',
   'auto-redirect','auto-detect-interface','dns-hijack','strict-route','mtu'];
 const json = value => JSON.parse(JSON.stringify(value));
@@ -97,8 +97,7 @@ checkTun('unchanged app settings and custom fields', () => {
 checkTun('reproduce dns-hijack-only conflict', () => {
   const input = {...base(),tun:guiTun()}; input.tun['auto-route'] = true;
   const app = ownedTun(input.tun), output = execute(scripts.empty, input);
-  const discarded = Object.keys(app).filter(key =>
-    JSON.stringify(output.tun[key]) !== JSON.stringify(app[key]));
+  const discarded = Object.keys(app).filter(key => JSON.stringify(output.tun[key]) !== JSON.stringify(app[key]));
   assert.deepEqual(discarded, [], 'Settings-owned fields would be discarded by Verge');
 });
 const oldScripts = {
@@ -123,22 +122,17 @@ for (const [name, source] of Object.entries(oldScripts)) {
   checkTun('merged ' + name, () => {
     const input = {...base(),tun:guiTun()}, expected = ownedTun(input.tun);
     const output = execute(compose(source), input);
-    assert.deepEqual(ownedTun(output.tun), expected);
-    assert.equal(output.custom, 'preserved');
+    assert.deepEqual(ownedTun(output.tun), expected); assert.equal(output.custom, 'preserved');
     if (name === 'replacement tun') assert.equal(output.tun['udp-timeout'], 300);
   });
 }
 checkTun('absent TUN settings stay absent', () => {
-  const output = execute(scripts.empty, base());
-  assert(!Object.prototype.hasOwnProperty.call(output, 'tun'));
+  const output = execute(scripts.empty, base()); assert(!Object.prototype.hasOwnProperty.call(output, 'tun'));
 });
-checkTun('null TUN is preserved', () => {
-  assert.equal(execute(scripts.empty, {...base(),tun:null}).tun, null);
-});
+checkTun('null TUN is preserved', () => { assert.equal(execute(scripts.empty, {...base(),tun:null}).tun, null); });
 checkTun('old imports cannot inject defaults into absent settings', () => {
   const output = execute(compose(oldScripts['legacy writes']), base());
-  assert.deepEqual(ownedTun(output.tun), {});
-  assert.equal(output.custom, 'preserved');
+  assert.deepEqual(ownedTun(output.tun), {}); assert.equal(output.custom, 'preserved');
 });
 checkTun('custom non-GUI TUN fields remain supported', () => {
   const output = execute(compose("function main(c) { c.tun = {'udp-timeout':300}; return c; }"), base());
@@ -150,12 +144,10 @@ checkTun('repeated merged script application is stable', () => {
   assert.deepEqual(json(execute(script, output)), expected);
 });
 console.log('PASS ' + tunChecks + ' managed TUN regression cases');
-
-// No host capabilities (fetch, require, fs) are needed by the generated JavaScript.
 const config = execute(scripts.empty, {'mixed-port':17891,mode:'rule','log-level':'info',dns:{enable:true,listen:'127.0.0.1:10553',nameserver:['1.1.1.1'],'fake-ip-filter':['+.lan','*.local']},rules:['MATCH,DIRECT']});
 config.tun = {...(config.tun ?? {}), enable:false};
-config['rule-providers']['host2vm-relay-rules']={type:'inline',behavior:'classical',payload:['DOMAIN,code.example.com','IP-CIDR,10.20.30.40/32,no-resolve']};
+for (const name of ['host2vm-relay-rules','host2vm-relay-udp-rules']) config['rule-providers'][name]={type:'inline',behavior:'classical',payload:['DOMAIN,code.example.com','IP-CIDR,10.20.30.40/32,no-resolve']};
 const output = process.argv[2] || path.join(root,'artifacts/checks/mihomo.json');
 fs.mkdirSync(path.dirname(path.resolve(output)),{recursive:true}); fs.writeFileSync(output,JSON.stringify(config,null,2));
-console.log('PASS script composition, lexical scope, preserved helper functions, Unicode, return modes, failure propagation, wrapper regeneration, legacy migration, DNS modes and idempotence');
-console.log(process.argv[3] ? 'PASS executed actual C# generator output' : 'INFO template-only local checks; C# generator fixtures are exercised by Windows self-test/CI');
+console.log('PASS script composition, preserved helpers, Unicode, return modes, failure propagation, wrapper regeneration, migration, DNS, idempotence and original-policy fallback configuration');
+console.log(process.argv[3] ? 'PASS executed actual C# generator output' : 'INFO template-only checks; C# generator fixtures are exercised by Windows CI');
