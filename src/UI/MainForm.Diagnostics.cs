@@ -32,37 +32,33 @@ public sealed partial class MainForm
                 audit.Check(pageTitle?.Text == PageTitles[i], "page heading follows navigation: " + i);
             }
             SelectPage(0);
-            int startDpi = DeviceDpi;
-            var fonts = UiAcceptance.FontBaseline(this);
-            audit.ApplyDpi(this, audit.TargetDpi);
-            audit.VerifyFontScaling(fonts, startDpi, audit.TargetDpi);
+            int startDpi = DeviceDpi; var fonts = UiAcceptance.FontBaseline(this);
+            audit.ApplyDpi(this, audit.TargetDpi); audit.VerifyFontScaling(fonts, startDpi, audit.TargetDpi);
             audit.Check(windowIcon?.Width == 32 * audit.TargetDpi / 96, "window icon has requested pixel size");
             audit.Check(trayIcon?.Width == 16 * audit.TargetDpi / 96, "tray icon has requested pixel size");
+            bool compact = ClientSize.Width * 96.0 / DeviceDpi < 860;
+            audit.Check(compactNavigation?.Visible == compact && sidebar?.Visible != compact, "navigation adapts without hiding destinations");
             for (int i = 0; i < tabs.TabCount; i++)
             {
-                navigationButtons[i].PerformClick(); UiAcceptance.Settle(this);
-                audit.Inspect(this, "page-" + i);
+                navigationButtons[i].PerformClick(); UiAcceptance.Settle(this); audit.Inspect(this, "page-" + i);
                 if (i == 0)
                 {
-                    auth.SelectedIndex = 1; UiAcceptance.Settle(this); audit.Inspect(this, "page-0-private-key");
-                    auth.SelectedIndex = originalAuth;
+                    auth.SelectedIndex = 1; UiAcceptance.Settle(this); audit.Inspect(this, "page-0-private-key"); auth.SelectedIndex = originalAuth;
                 }
                 if (i == 2)
                 {
                     var toggle = tabs.TabPages[i].Controls.Find("toggleTunGuide", true).OfType<Button>().Single();
                     var guide = tabs.TabPages[i].Controls.Find("tunInstructions", true).Single();
-                    toggle.PerformClick(); UiAcceptance.Settle(this); audit.Check(guide.Visible, "TUN disclosure opens");
-                    audit.Inspect(this, "page-2-expanded");
+                    toggle.PerformClick(); UiAcceptance.Settle(this); audit.Check(guide.Visible, "TUN disclosure opens"); audit.Inspect(this, "page-2-expanded");
                     toggle.PerformClick(); audit.Check(!guide.Visible, "TUN disclosure closes");
                 }
             }
             using (var dialog = new ScriptDialog(GenerateScript, ""))
             {
                 dialog.Show(this); dialog.VerifyForTest(); UiAcceptance.Settle(dialog);
-                int dialogDpi = dialog.DeviceDpi;
-                var dialogFonts = UiAcceptance.FontBaseline(dialog);
-                audit.ApplyDpi(dialog, audit.TargetDpi);
-                audit.VerifyFontScaling(dialogFonts, dialogDpi, audit.TargetDpi);
+                int dialogDpi = dialog.DeviceDpi; var dialogFonts = UiAcceptance.FontBaseline(dialog);
+                audit.ApplyDpi(dialog, audit.TargetDpi); audit.VerifyFontScaling(dialogFonts, dialogDpi, audit.TargetDpi);
+                audit.Check(dialog.EditorViewportHeight >= UiTheme.Px(dialog, 90), "script viewport retains usable height in a compact window");
                 audit.Inspect(dialog, "script-dialog");
                 if (!requireNativeDpi)
                 {
@@ -71,6 +67,7 @@ public sealed partial class MainForm
                         audit.ApplyDpi(dialog, dialogDpi); audit.VerifyFontScaling(dialogFonts, dialogDpi, dialogDpi);
                         audit.ApplyDpi(dialog, audit.TargetDpi); audit.VerifyFontScaling(dialogFonts, dialogDpi, audit.TargetDpi);
                     }
+                    audit.Check(dialog.EditorViewportHeight >= UiTheme.Px(dialog, 90), "script viewport survives DPI round trips");
                     audit.Inspect(dialog, "script-roundtrip");
                 }
                 dialog.Close();
