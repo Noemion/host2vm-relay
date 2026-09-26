@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Host2VMRelay;
@@ -34,7 +35,7 @@ internal sealed class ScriptDialog : Form
         layout.Controls.Add(tools, 0, 1);
         layout.Controls.Add(UiLayout.Help("原始扩展脚本：支持 function main(...)、const main = (...) => ... 及其辅助函数"), 0, 2);
         ConfigureEditor(source, false); source.MaxLength = ScriptComposer.MaxSourceLength + 32768;
-        source.Text = existingScript; layout.Controls.Add(source, 0, 3);
+        source.Text = WindowsLines(existingScript); layout.Controls.Add(source, 0, 3);
         layout.Controls.Add(UiLayout.Help("完整脚本预览（整体替换 Clash 当前订阅的扩展脚本）"), 0, 4);
         ConfigureEditor(output, true); layout.Controls.Add(output, 0, 5);
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, WrapContents = true, Margin = Padding.Empty };
@@ -57,6 +58,10 @@ internal sealed class ScriptDialog : Form
         FormClosed += (_, _) => appIcon?.Dispose();
         ResumeLayout(true);
     }
+
+    // Win32 multiline edit controls need CRLF for hard line breaks. The generator
+    // continues to normalize CR/LF internally, so its source envelope stays valid.
+    private static string WindowsLines(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\n", "\r\n");
 
     private void UpdateIcon(int dpi)
     {
@@ -87,21 +92,23 @@ internal sealed class ScriptDialog : Form
             if (new FileInfo(dialog.FileName).Length > (ScriptComposer.MaxSourceLength + 32768L) * 4 + 4)
                 throw new ArgumentException("文件过大，请选择原始扩展脚本。");
             using var reader = new StreamReader(dialog.FileName, new UTF8Encoding(false, true), true);
-            string text = reader.ReadToEnd();
-            source.Text = ScriptComposer.ExtractOriginal(text); merge.Checked = true;
+            source.Text = WindowsLines(ScriptComposer.ExtractOriginal(reader.ReadToEnd())); merge.Checked = true;
             status.Text = "已导入原脚本。点击“生成完整脚本并复制”完成合并。";
         }
         catch (Exception ex) { ShowError(ex); }
     }
 
+    private void PrepareOutput()
+    {
+        output.Text = WindowsLines(generate(merge.Checked ? source.Text : null));
+        output.Select(0, 0); output.ScrollToCaret();
+        copy.Enabled = save.Enabled = true;
+        status.Text = "完整脚本已生成，可复制或另存为 .js。";
+    }
+
     private void GenerateAndCopy()
     {
-        try
-        {
-            output.Text = generate(merge.Checked ? source.Text : null);
-            copy.Enabled = save.Enabled = true;
-            Copy();
-        }
+        try { PrepareOutput(); Copy(); }
         catch (Exception ex) { ShowError(ex); }
     }
 
@@ -127,15 +134,29 @@ internal sealed class ScriptDialog : Form
 
     private void ShowError(Exception ex) => MessageBox.Show(this, ex.Message, "脚本处理失败", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessageW(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
     internal void VerifyForTest()
     {
         merge.Checked = true;
-        source.Text = "const label = '保留原脚本'; function main(config, profileName) { config.label = label; return config; }";
-        output.Text = generate(source.Text);
-        if (!output.Text.Contains("保留原脚本") || !output.Text.Contains("host2vm-relay-rules")) throw new InvalidOperationException("Script dialog lost user source.");
-        copy.Enabled = save.Enabled = true;
-        source.AppendText("\n// updated");
+        const string sample = "const label = '保留原脚本';\nfunction main(config, profileName) {\n  config.label = label;\n  return config;\n}";
+        foreach (string newline in new[] { "\n", "\r\n", "\r" })
+        {
+            source.Text = WindowsLines(sample.Replace("\n", newline));
+            PrepareOutput();
+            if (ScriptComposer.ExtractOriginal(output.Text) != sample)
+                throw new InvalidOperationException("Script preview line-ending conversion changed the original source.");
+            int nativeLines = SendMessageW(output.Handle, 0x00BA, IntPtr.Zero, IntPtr.Zero).ToInt32();
+            int expectedLines = output.Text.Count(c => c == '\n') + 1;
+            if (nativeLines < expectedLines - 1 || nativeLines < 20)
+                throw new InvalidOperationException($"Native script preview collapsed lines: actual={nativeLines}, expected={expectedLines}.");
+        }
+        if (!output.Text.Contains("保留原脚本") || !output.Text.Contains("host2vm-relay-rules"))
+            throw new InvalidOperationException("Script dialog lost user source.");
+        source.AppendText("\r\n// updated");
         if (output.TextLength != 0 || copy.Enabled || save.Enabled) throw new InvalidOperationException("Stale script can be copied.");
-        output.Text = generate(source.Text); copy.Enabled = save.Enabled = true;
+        PrepareOutput();
+        source.Select(0, 0); source.ScrollToCaret();
     }
 }

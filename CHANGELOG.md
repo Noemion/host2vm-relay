@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3 — Script preview rendering acceptance
+
+- Normalize CR, LF and CRLF to Windows hard line breaks when displaying imported or generated scripts.
+- Use the same preview preparation path for normal operation and tests; validate native edit-control line counts and lossless source extraction.
+- Reset preview caret and report a generated result after stale-output invalidation is resolved.
+- Retain the full 100/125/150/175/200 DPI matrix and the native-monitor validation guard introduced in 0.4.2.
+
 ## 0.4.2 — DPI acceptance and high-scale layout fixes
 
 - Add independent 100%, 125%, 150%, 175% and 200% layout acceptance with DPI message injection, text metrics, caption-fit, overlap, scroll reachability, focus and repeated DPI round-trip assertions.
