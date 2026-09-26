@@ -175,7 +175,14 @@ def main():
                     sessions[key][1] = time.monotonic()
                 except (ValueError, OSError, UnicodeError, IndexError, struct.error) as exc:
                     emit(b'E', ident, str(exc).encode('utf-8', errors='replace')[:256])
-            for event, _ in selector.select(.01):
+            # Windows select() rejects an empty descriptor set; idle bridges must
+            # still process control/probe frames before the first UDP association.
+            if selector.get_map():
+                events = selector.select(.01)
+            else:
+                time.sleep(.01)
+                events = ()
+            for event, _ in events:
                 key = event.data
                 try:
                     udp = event.fileobj

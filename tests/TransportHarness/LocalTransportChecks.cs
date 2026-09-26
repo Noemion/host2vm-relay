@@ -10,6 +10,8 @@ internal static class LocalTransportChecks
 {
     public static async Task RunAsync(string resultPath)
     {
+        resultPath = Path.GetFullPath(resultPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(resultPath)!);
         var checks = new List<string>();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
         var token = timeout.Token;
@@ -31,6 +33,7 @@ internal static class LocalTransportChecks
             start.ArgumentList.Add("-I"); start.ArgumentList.Add("-u"); start.ArgumentList.Add("-c");
             start.ArgumentList.Add(code);
             using var process = Process.Start(start) ?? throw new IOException("Could not start isolated bridge test");
+            Task<string> stderr = process.StandardError.ReadToEndAsync();
             try
             {
                 using var tunnel = await UdpTunnel.OpenStreamsAsync(process.StandardInput.BaseStream, process.StandardOutput.BaseStream,
@@ -73,14 +76,13 @@ internal static class LocalTransportChecks
             {
                 if (!process.HasExited) process.Kill();
                 await process.WaitForExitAsync(CancellationToken.None);
+                File.WriteAllText(Path.ChangeExtension(resultPath, ".stderr.txt"), await stderr);
             }
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(resultPath))!);
             File.WriteAllText(resultPath, JsonSerializer.Serialize(new { Status = "PASS", OS = Environment.OSVersion.ToString(), Checks = checks,
                 Scope = "Real native loopback TCP/UDP and production SOCKS/bridge code. Not a Windows TUN or SSH end-to-end test." }, new JsonSerializerOptions { WriteIndented = true }));
         }
         catch (Exception ex)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(resultPath))!);
             File.WriteAllText(resultPath, JsonSerializer.Serialize(new { Status = "FAIL", Checks = checks, Error = ex.ToString() }));
             throw;
         }
