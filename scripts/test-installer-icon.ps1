@@ -1,10 +1,11 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Executable,
-    [string]$ReferenceIcon = (Join-Path (Split-Path $PSScriptRoot -Parent) 'artifacts\assets\Host2VMRelay.Setup.ico')
+    [string]$ReferenceIcon = ''
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
+if (!$ReferenceIcon) { $ReferenceIcon = Join-Path $repoRoot 'artifacts\assets\Host2VMRelay.Setup.ico' }
 $folder = Join-Path $repoRoot 'artifacts\checks\installer-icon'
 New-Item -ItemType Directory -Force $folder | Out-Null
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
