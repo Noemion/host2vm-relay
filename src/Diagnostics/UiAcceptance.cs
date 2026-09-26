@@ -3,7 +3,6 @@ using System.Text.Json;
 
 namespace Host2VMRelay;
 
-/// <summary>Layout assertions and evidence for isolated UI acceptance runs.</summary>
 internal sealed class UiAcceptance
 {
     [StructLayout(LayoutKind.Sequential)]
@@ -17,7 +16,6 @@ internal sealed class UiAcceptance
     private static extern bool AreDpiAwarenessContextsEqual(IntPtr first, IntPtr second);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr SendMessageW(IntPtr window, uint message, IntPtr wParam, ref NativeRect rect);
-
     private readonly string folder;
     private readonly List<object> stages = new();
     private readonly List<string> errors = new();
@@ -35,20 +33,18 @@ internal sealed class UiAcceptance
         Directory.CreateDirectory(folder);
         this.percent = percent; this.native = native;
     }
-
     public void Check(bool condition, string message)
     {
         AssertionCount++;
         string item = stage + ": " + message;
-        if (!condition) errors.Add(item);
-        else checks.Add(item);
+        if (!condition) errors.Add(item); else checks.Add(item);
     }
-
     public bool CheckEnvironment(Form form)
     {
         int actual = checked((int)GetDpiForWindow(form.Handle));
         Check(AreDpiAwarenessContextsEqual(GetWindowDpiAwarenessContext(form.Handle), new IntPtr(-4)), "window is PerMonitorV2 aware");
         Check(actual > 0 && form.DeviceDpi == actual, "startup managed DPI matches the native window DPI");
+        Check(form.Font.SizeInPoints >= 11.5F, "readable base font at startup");
         stages.Add(new { Stage = stage, Method = "native-startup", NativeDpi = actual, ManagedDpi = form.DeviceDpi,
             Monitor = Screen.FromHandle(form.Handle).DeviceName, WorkArea = Screen.FromHandle(form.Handle).WorkingArea.ToString(),
             Windows = Environment.OSVersion.ToString(), Runtime = Environment.Version.ToString() });
@@ -60,9 +56,8 @@ internal sealed class UiAcceptance
         }
         return true;
     }
-
-    // Exercise the real WinForms WM_DPICHANGED handler, not Control.Scale().
-    // The OS monitor DPI does NOT change: this remains a message-injection regression.
+    // Parent-window message injection exercises WinForms scaling and our callbacks.
+    // It does not change the OS DPI or reproduce the entire child-window notification sequence.
     public void ApplyDpi(Form form, int dpi)
     {
         if (native) { Check(GetDpiForWindow(form.Handle) == dpi, "native DPI matches requested DPI without injection"); return; }
@@ -83,11 +78,9 @@ internal sealed class UiAcceptance
         }
         finally { form.DpiChanged -= handler; }
     }
-
     public static Dictionary<Control, int> FontBaseline(Control root) => All(root).ToDictionary(c => c, GlyphHeight);
     private static int GlyphHeight(Control control) => TextRenderer.MeasureText("Ag国", control.Font, Size.Empty,
         TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Height;
-
     public void VerifyFontScaling(Dictionary<Control, int> baseline, int startDpi, int targetDpi)
     {
         foreach (var pair in baseline)
@@ -100,15 +93,14 @@ internal sealed class UiAcceptance
                 $"font scales for {Identity(control)}: measured={actual}px, expected~{expected:F1}px");
         }
     }
-
     public void Inspect(Form form, string name)
     {
         stage = name;
-        Settle(form);
+        form.Activate(); form.BringToFront(); Settle(form);
         Rectangle area = Screen.FromHandle(form.Handle).WorkingArea;
         Check(area.Contains(form.Bounds), "window remains inside the monitor work area");
         Check(form.AutoScaleMode == AutoScaleMode.Dpi, "DPI automatic scaling remains enabled");
-        Check(form.DeviceDpi == TargetDpi || name.Contains("return-"), "requested managed DPI is active");
+        Check(form.DeviceDpi == TargetDpi, "requested managed DPI is active");
         var visible = All(form).Where(c => c.Visible).ToArray();
         var measurements = new List<object>();
         foreach (var c in visible)
@@ -118,6 +110,7 @@ internal sealed class UiAcceptance
             measurements.Add(new { Control = Identity(c), Bounds = c.Bounds.ToString(), Client = c.ClientSize.ToString(),
                 FontPoints = c.Font.SizeInPoints, GlyphHeight = glyph, Dpi = c.DeviceDpi, Enabled = c.Enabled });
             Check(c.Width > 0 && c.Height > 0, "nonempty bounds: " + Identity(c));
+            if (native) Check(c.DeviceDpi == TargetDpi, "native child DPI is correct: " + Identity(c));
             if (c is Label || c is ButtonBase)
             {
                 Size preferred = c.GetPreferredSize(c is Label ? new Size(Math.Max(1, c.Width), 0) : Size.Empty);
@@ -164,21 +157,18 @@ internal sealed class UiAcceptance
         }
         Screenshot(form, name + "-scrolled.png");
         stages.Add(new { Stage = name, Method = native ? "native-monitor" : "injected-WM_DPICHANGED",
-            NativeDpi = GetDpiForWindow(form.Handle), ManagedDpi = form.DeviceDpi, Window = form.Bounds.ToString(),
-            WorkArea = area.ToString(), Controls = measurements });
+            ScreenshotMethod = "desktop-CopyFromScreen", NativeDpi = GetDpiForWindow(form.Handle), ManagedDpi = form.DeviceDpi,
+            Window = form.Bounds.ToString(), WorkArea = area.ToString(), Controls = measurements });
     }
-
     private static void Reveal(Control control)
     {
         var parents = new List<ScrollableControl>();
         for (Control? p = control.Parent; p is not null; p = p.Parent)
             if (p is ScrollableControl { AutoScroll: true } scroll) parents.Add(scroll);
         for (int pass = 0; pass < 2; pass++)
-            foreach (var scroll in parents)
-                scroll.ScrollControlIntoView(control);
+            foreach (var scroll in parents) scroll.ScrollControlIntoView(control);
         Application.DoEvents();
     }
-
     private static bool IsLeaf(Control c) => c is Label or ButtonBase or TextBoxBase or ComboBox or NumericUpDown;
     private static IEnumerable<Control> All(Control root)
     {
@@ -204,8 +194,16 @@ internal sealed class UiAcceptance
     }
     private void Screenshot(Form form, string name)
     {
+        // DrawToBitmap re-renders scrolled native child windows outside their clip
+        // region. Capture the painted desktop instead of accepting that reconstruction.
+        form.Refresh(); Application.DoEvents(); Thread.Sleep(80);
         using var bitmap = new Bitmap(form.Width, form.Height);
-        form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
+        using (var graphics = Graphics.FromImage(bitmap))
+            graphics.CopyFromScreen(form.Location, Point.Empty, form.Size, CopyPixelOperation.SourceCopy);
+        var colors = new HashSet<int>();
+        for (int y = 0; y < bitmap.Height; y += 13)
+            for (int x = 0; x < bitmap.Width; x += 13) colors.Add(bitmap.GetPixel(x, y).ToArgb());
+        Check(colors.Count > 8, "desktop screenshot contains a rendered window, not a blank capture");
         bitmap.Save(Path.Combine(folder, name));
     }
     public void Finish(string output)
@@ -215,10 +213,9 @@ internal sealed class UiAcceptance
             Status = status, Mode = native ? "native-monitor" : "message-injection", TargetPercent = percent,
             TargetDpi, Assertions = AssertionCount, Errors = errors, Checks = checks, Stages = stages,
             Limitations = native ? "Single-monitor automated geometry/focus checks; physical multi-monitor movement and visual sharpness need operator review."
-                : "No Windows scale setting was changed. Injected DPI notifications are not native monitor DPI acceptance."
+                : "No Windows scale setting was changed. Parent DPI-message injection is not native monitor or child-window DPI acceptance."
         }, new JsonSerializerOptions { WriteIndented = true }));
         File.WriteAllText(Path.ChangeExtension(output, ".txt"), $"{status} DPI {percent}% ({TargetDpi}); mode={(native ? "native-monitor" : "message-injection")}; assertions={AssertionCount}; errors={errors.Count}\n" + string.Join("\n", errors));
-        if (Blocked) Environment.ExitCode = 2;
-        else if (errors.Count != 0) Environment.ExitCode = 1;
+        if (Blocked) Environment.ExitCode = 2; else if (errors.Count != 0) Environment.ExitCode = 1;
     }
 }

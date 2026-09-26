@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2 — DPI acceptance and high-scale layout fixes
+
+- Add independent 100%, 125%, 150%, 175% and 200% layout acceptance with DPI message injection, text metrics, caption-fit, overlap, scroll reachability, focus and repeated DPI round-trip assertions.
+- Add strict native monitor checks and a negative guard that refuses native 200% certification on a 96-DPI desktop. Native and injected evidence remain distinct.
+- Keep explicit title and editor fonts proportional to the form font across DPI changes.
+- Fix inaccessible rule-save controls caused by fill docking inside a scrollable tab; wrap credential guidance separately.
+- Produce exact requested icon dimensions, including 28/56 pixels at 175%, and update the script dialog icon on DPI changes.
+- Capture painted desktop windows rather than un-clipped DrawToBitmap reconstructions; retain JSON metrics and screenshots under artifacts/checks.
+
 ## 0.4.1 — Clash settings compatibility and release maintenance
 
 - Publish the managed TUN settings fix previously available only in main and Actions artifacts.
