@@ -1,9 +1,49 @@
+using System.Runtime.CompilerServices;
+
 namespace Host2VMRelay;
 
 internal static class UiLayout
 {
     public static Font BodyFont() => new("Microsoft YaHei UI", 12F, FontStyle.Regular, GraphicsUnit.Point);
     public static Font CodeFont() => new("Consolas", 12F, FontStyle.Regular, GraphicsUnit.Point);
+    private static readonly ConditionalWeakTable<Form, ExplicitFonts> fontTrackers = new();
+
+    // Inherited fonts follow the form automatically. Explicit title/editor fonts
+    // retain their family/style but follow the same form-font scale, not another DPI multiplier.
+    private sealed class ExplicitFonts
+    {
+        private readonly Form form;
+        private readonly List<(Control Control, string Family, float Ratio, FontStyle Style)> specs = new();
+        private readonly Dictionary<Control, Font> owned = new();
+        public ExplicitFonts(Form form)
+        {
+            this.form = form;
+            Capture(form);
+            form.Disposed += (_, _) => { foreach (var font in owned.Values) font.Dispose(); owned.Clear(); };
+        }
+        private void Capture(Control parent)
+        {
+            foreach (Control child in parent.Controls)
+            {
+                if (!child.Font.Equals(parent.Font))
+                    specs.Add((child, child.Font.FontFamily.Name, child.Font.SizeInPoints / form.Font.SizeInPoints, child.Font.Style));
+                Capture(child);
+            }
+        }
+        public void Apply()
+        {
+            foreach (var spec in specs)
+            {
+                if (spec.Control.IsDisposed) continue;
+                float points = form.Font.SizeInPoints * spec.Ratio;
+                if (Math.Abs(spec.Control.Font.SizeInPoints - points) < 0.01F) continue;
+                var next = new Font(spec.Family, points, spec.Style, GraphicsUnit.Point);
+                spec.Control.Font = next;
+                if (owned.Remove(spec.Control, out var previous)) previous.Dispose();
+                owned[spec.Control] = next;
+            }
+        }
+    }
 
     public static Button Button(string text, int minimumWidth = 110) => new()
     {
@@ -11,14 +51,12 @@ internal static class UiLayout
         MinimumSize = new Size(minimumWidth, 40), Padding = new Padding(10, 5, 10, 5),
         Margin = new Padding(0, 4, 10, 4)
     };
-
     public static Label Help(string text) => new()
     {
         Text = text, AutoSize = true, Dock = DockStyle.Top,
         MaximumSize = new Size(680, 0), Margin = new Padding(0, 4, 0, 8)
     };
 
-    // Label widths follow their table columns, including after DPI and window-size changes.
     public static void WrapLabels(TableLayoutPanel table)
     {
         bool updating = false;
@@ -44,7 +82,9 @@ internal static class UiLayout
 
     public static void FitToScreen(Form form, Size logicalMinimum)
     {
-        if (form.IsDisposed || form.WindowState != FormWindowState.Normal) return;
+        if (form.IsDisposed) return;
+        fontTrackers.GetValue(form, f => new ExplicitFonts(f)).Apply();
+        if (form.WindowState != FormWindowState.Normal) return;
         Rectangle area = Screen.FromHandle(form.Handle).WorkingArea;
         int dpi = form.DeviceDpi;
         form.MinimumSize = new Size(Math.Min(logicalMinimum.Width * dpi / 96, area.Width),

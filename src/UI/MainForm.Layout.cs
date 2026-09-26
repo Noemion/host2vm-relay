@@ -19,9 +19,10 @@ public sealed partial class MainForm
     private static void Row(TableLayoutPanel grid, string title, Control control)
     {
         int row = grid.RowCount++; grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var label = new Label { Text = title, AutoSize = true, Margin = new Padding(0, 10, 12, 8) };
+        if (!string.IsNullOrEmpty(title))
+            grid.Controls.Add(new Label { Text = title, AutoSize = true, Margin = new Padding(0, 10, 12, 8) }, 0, row);
         control.Margin = new Padding(0, 5, 0, 9); control.Dock = DockStyle.Top;
-        grid.Controls.Add(label, 0, row); grid.Controls.Add(control, 1, row);
+        grid.Controls.Add(control, 1, row);
     }
 
     private void BuildConnection()
@@ -41,7 +42,10 @@ public sealed partial class MainForm
         keys.Controls.Add(keyPath, 0, 0); keys.Controls.Add(browse, 1, 0); Row(grid, "私钥文件", keys);
         keyControls = keys;
         auth.SelectedIndexChanged += (_, _) => keys.Enabled = auth.SelectedIndex == 1 && !busy && client?.IsConnected != true;
-        secret.UseSystemPasswordChar = true; Row(grid, "密码 / 私钥口令", secret); Row(grid, "", remember);
+        secret.UseSystemPasswordChar = true; Row(grid, "密码 / 私钥口令", secret);
+        remember.Text = "加密保存密码 / 私钥口令";
+        Row(grid, "", remember);
+        Row(grid, "", UiLayout.Help("保存的凭据仅当前 Windows 用户可解密。"));
         Row(grid, "本机 SOCKS5 端口", socksPort); Row(grid, "", retry);
         var buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = true };
         buttons.Controls.Add(connect); buttons.Controls.Add(disconnect); state.Margin = new Padding(10, 12, 0, 4); buttons.Controls.Add(state);
@@ -52,11 +56,14 @@ public sealed partial class MainForm
     private void BuildRules()
     {
         var page = Page("域名 / IP");
-        var grid = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, MinimumSize = new Size(0, 360) };
+        // Dock.Top contributes its full height to AutoScroll; Dock.Fill can hide
+        // the save row below the tab's viewport when MinimumSize exceeds it.
+        var grid = new TableLayoutPanel { Dock = DockStyle.Top, Height = 420, ColumnCount = 1, RowCount = 3, MinimumSize = new Size(0, 360) };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize)); grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         grid.Controls.Add(UiLayout.Help("每行一个地址，命中的 TCP 连接经远端主机转发。\n精确域名：code.example.com；域名及子域名：*.example.com\n单个 IP：10.20.30.40；网段：10.20.30.0/24；# 开头为注释"), 0, 0);
         ruleText.Multiline = true; ruleText.AcceptsReturn = true; ruleText.ScrollBars = ScrollBars.Both;
+        ruleText.MinimumSize = new Size(140, 96);
         ruleText.WordWrap = false; ruleText.Dock = DockStyle.Fill; ruleText.Font = UiLayout.CodeFont(); grid.Controls.Add(ruleText, 0, 1);
         var bar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true };
         var saveRules = UiLayout.Button("保存规则", 130);
@@ -74,6 +81,7 @@ public sealed partial class MainForm
         };
         bar.Controls.Add(saveRules); bar.Controls.Add(new Label { Text = "规则变更无需重复粘贴脚本。", AutoSize = true, Margin = new Padding(6, 12, 0, 4) });
         grid.Controls.Add(bar, 0, 2); UiLayout.WrapLabels(grid); page.Controls.Add(grid);
+        page.ClientSizeChanged += (_, _) => grid.Height = Math.Max(grid.MinimumSize.Height, page.ClientSize.Height - page.Padding.Vertical);
     }
 
     private void BuildClash()
@@ -125,7 +133,6 @@ public sealed partial class MainForm
     private string GenerateScript(string? existing)
     {
         string result = ClashScript.Generate((int)socksPort.Value, host.Text.Trim(), existing);
-        // Preparing/copying a script must never deactivate an already connected tunnel.
         if (client?.IsConnected == true) ClashRuleFile.Write(Rules.Compile(settings.Rules));
         else ClashRuleFile.Disable();
         Log("完整 Clash 扩展脚本已生成。");
@@ -137,5 +144,4 @@ public sealed partial class MainForm
         var page = Page("运行日志"); log.Multiline = true; log.ReadOnly = true; log.ScrollBars = ScrollBars.Vertical;
         log.Dock = DockStyle.Fill; log.Font = UiLayout.CodeFont(); page.Controls.Add(log);
     }
-
 }
