@@ -25,7 +25,7 @@ jobs:
         shell: pwsh
         run: |
           $resultPath = Join-Path $env:RUNNER_TEMP 'self-test.txt'
-          $test = Start-Process -FilePath '.\src\bin\Release\net8.0-windows\Host2VMRelay.exe' -ArgumentList "--self-test `"$resultPath`"" -PassThru -Wait
+          $test = Start-Process -FilePath '.\artifacts\build\bin\Release\net8.0-windows\Host2VMRelay.exe' -ArgumentList "--self-test `"$resultPath`"" -PassThru -Wait
           Get-Content $resultPath
           if ($test.ExitCode -ne 0) { throw 'Self-test failed' }
           node tests/test-script.cjs "$env:RUNNER_TEMP\mihomo-test.json"
@@ -86,8 +86,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed' }
             gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" -f "sha=$env:GITHUB_SHA" -F force=false
             if ($LASTEXITCODE -ne 0) { throw 'Release tag update failed' }
-            gh release edit $tag --prerelease=false --latest --title "Host2VM Relay $tag" --notes-file docs/RELEASE_NOTES.md
+            gh release edit $tag --prerelease=false --latest --title "Host2VMRelay $tag" --notes-file docs/RELEASE_NOTES.md
           } else {
-            gh release create $tag @assets --target $env:GITHUB_SHA --latest --title "Host2VM Relay $tag" --notes-file docs/RELEASE_NOTES.md
+            gh release create $tag @assets --target $env:GITHUB_SHA --latest --title "Host2VMRelay $tag" --notes-file docs/RELEASE_NOTES.md
           }
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
