@@ -16,12 +16,30 @@ public sealed class Settings
     public string Rules { get; set; } = "# 每行填写一个域名、IP 或网段";
     public string TestUrl { get; set; } = "https://example.com/";
     public Dictionary<string, string> HostKeys { get; set; } = new();
-    public static string Folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Host2VMRelay");
+
+    public static string Folder = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        "Host2VMRelay");
+
+    private static string LegacyFolder => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Host2VMRelay");
+
     public static Settings Load()
     {
-        var p = Path.Combine(Folder, "settings.json");
-        return File.Exists(p) ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(p)) ?? new() : new();
+        Directory.CreateDirectory(Folder);
+        var path = Path.Combine(Folder, "settings.json");
+        if (!File.Exists(path))
+        {
+            var legacy = Path.Combine(LegacyFolder, "settings.json");
+            if (File.Exists(legacy)) File.Copy(legacy, path, false);
+        }
+
+        return File.Exists(path)
+            ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(path)) ?? new()
+            : new();
     }
+
     public void Save()
     {
         Directory.CreateDirectory(Folder);
