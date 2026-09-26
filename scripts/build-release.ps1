@@ -29,7 +29,7 @@ New-Item -ItemType Directory -Force $publishRoot,$releaseRoot | Out-Null
 foreach ($rid in @('win-x64','win-x86','win-arm64')) {
     $target = Join-Path $publishRoot $rid
     if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
-    & $DotNet publish $project -c Release -r $rid -p:PublishProfile=Standalone -p:RestoreLockedMode=true -o $target
+    & $DotNet publish $project -c Release -r $rid -p:PublishProfile=Standalone -o $target
     if ($LASTEXITCODE -ne 0) { throw "Publish failed: $rid" }
     if (!(Test-Path -LiteralPath (Join-Path $target 'Host2VMRelay.exe'))) { throw "Missing executable: $rid" }
     $unexpected = Get-ChildItem -LiteralPath $target -File | Where-Object { $_.Extension -in '.dll','.pdb','.json' }

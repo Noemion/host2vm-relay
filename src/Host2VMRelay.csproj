@@ -13,6 +13,7 @@
     <AppIconPath>$(MSBuildThisFileDirectory)..\artifacts\assets\Host2VMRelay.ico</AppIconPath>
     <ApplicationIcon>$(AppIconPath)</ApplicationIcon>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <NuGetLockFilePath>$(BaseIntermediateOutputPath)packages.lock.json</NuGetLockFilePath>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>

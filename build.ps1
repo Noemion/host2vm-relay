@@ -22,7 +22,7 @@ function Invoke-Checked {
 Push-Location $repoRoot
 try {
     if ($Sync) { Invoke-Checked 'git' @('-C', $repoRoot, 'pull', '--ff-only') }
-    Invoke-Checked $DotNet @('restore', $project, '--locked-mode')
+    Invoke-Checked $DotNet @('restore', $project)
     Invoke-Checked $DotNet @('build', $project, '-c', $Configuration, '--no-restore')
     $exe = Join-Path $repoRoot "artifacts\build\bin\$Configuration\net8.0-windows\Host2VMRelay.exe"
     if (!(Test-Path -LiteralPath $exe)) { throw "Executable not found: $exe" }
