@@ -13,10 +13,7 @@ function Invoke-AppCheck {
     param([string]$Arguments, [string]$ResultPath)
     if (Test-Path -LiteralPath $ResultPath) { Remove-Item -LiteralPath $ResultPath -Force }
     $process = Start-Process -FilePath $Executable -ArgumentList $Arguments -PassThru
-    if (!$process.WaitForExit(60000)) {
-        $process.Kill()
-        throw "Application check timed out: $Arguments"
-    }
+    if (!$process.WaitForExit(60000)) { $process.Kill(); throw "Application check timed out: $Arguments" }
     $process.Refresh()
     if (Test-Path -LiteralPath $ResultPath) { Get-Content -LiteralPath $ResultPath }
     if ($process.ExitCode -ne 0 -or !(Test-Path -LiteralPath $ResultPath)) { throw "Application check failed: $Arguments" }
@@ -28,11 +25,11 @@ if ($LASTEXITCODE -ne 0) { throw 'JavaScript regression tests failed.' }
 & node (Join-Path $repoRoot 'tests\test-assets.cjs')
 if ($LASTEXITCODE -ne 0) { throw 'Icon and DPI configuration checks failed.' }
 if ($Smoke) {
-    foreach ($scale in @(100,125,150,200)) {
-        $folder = Join-Path $checks "ui-$scale"
-        New-Item -ItemType Directory -Force $folder | Out-Null
-        $image = Join-Path $folder 'main.png'
-        Invoke-AppCheck "--smoke --ui-scale=$scale `"$image`"" ([IO.Path]::ChangeExtension($image, '.txt'))
+    # All five plateaus, including separate 175% and 200% acceptance cases.
+    & (Join-Path $PSScriptRoot 'test-dpi.ps1') -Executable $Executable -Scale @(100,125,150,175,200)
+    if ($env:GITHUB_ACTIONS -eq 'true') {
+        # Hosted runner baseline only. Never label injected 120/144/168/192 DPI as native.
+        & (Join-Path $PSScriptRoot 'test-dpi.ps1') -Executable $Executable -Native -Scale 100
     }
 }
 Write-Host "Checks completed: $checks"

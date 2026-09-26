@@ -6,10 +6,10 @@ internal sealed class ScriptDialog : Form
 {
     private readonly Func<string?, string> generate;
     private readonly CheckBox merge = new() { Text = "合并现有 Clash 扩展脚本（可选）", AutoSize = true };
-    private readonly TextBox source = new(), output = new();
+    private readonly TextBox source = new() { Name = "originalScript" }, output = new() { Name = "generatedScript" };
     private readonly Button import = UiLayout.Button("导入 .js / .txt"), copy = UiLayout.Button("复制结果"), save = UiLayout.Button("另存为 .js");
     private readonly Label status = UiLayout.Help("不提供原脚本时直接生成；原脚本只在本次运行中保留，不会被本程序执行。");
-    private readonly Icon appIcon;
+    private Icon? appIcon;
     public string OriginalScript => merge.Checked ? source.Text : "";
 
     public ScriptDialog(Func<string?, string> generate, string existingScript)
@@ -22,7 +22,7 @@ internal sealed class ScriptDialog : Form
         Text = "Host2VMRelay — 生成 Clash 扩展脚本";
         ClientSize = new Size(940, 740); MinimumSize = new Size(680, 520);
         StartPosition = FormStartPosition.CenterParent; AutoScroll = true;
-        appIcon = AppIcon.Load(32); Icon = appIcon;
+        UpdateIcon(96);
         var layout = new TableLayoutPanel { Dock = DockStyle.Top, Height = 740, MinimumSize = new Size(0, 620), Padding = new Padding(18), ColumnCount = 1, RowCount = 8 };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (int i = 0; i < 8; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -52,16 +52,23 @@ internal sealed class ScriptDialog : Form
         compose.Click += (_, _) => GenerateAndCopy();
         copy.Click += (_, _) => Copy();
         save.Click += (_, _) => SaveOutput();
-        Shown += (_, _) => UiLayout.FitToScreen(this, new Size(680, 520));
-        DpiChanged += (_, _) => BeginInvoke(() => UiLayout.FitToScreen(this, new Size(680, 520)));
-        FormClosed += (_, _) => appIcon.Dispose();
+        Shown += (_, _) => { UpdateIcon(DeviceDpi); UiLayout.FitToScreen(this, new Size(680, 520)); };
+        DpiChanged += (_, e) => { UpdateIcon(e.DeviceDpiNew); BeginInvoke(() => UiLayout.FitToScreen(this, new Size(680, 520))); };
+        FormClosed += (_, _) => appIcon?.Dispose();
         ResumeLayout(true);
+    }
+
+    private void UpdateIcon(int dpi)
+    {
+        var next = AppIcon.Load(Math.Max(16, 32 * dpi / 96));
+        Icon = next; appIcon?.Dispose(); appIcon = next;
     }
 
     private static void ConfigureEditor(TextBox editor, bool readOnly)
     {
         editor.Multiline = true; editor.AcceptsReturn = true; editor.AcceptsTab = !readOnly;
         editor.ReadOnly = readOnly; editor.WordWrap = false; editor.ScrollBars = ScrollBars.Both;
+        editor.MinimumSize = new Size(140, 96);
         editor.Dock = DockStyle.Fill; editor.Font = UiLayout.CodeFont(); editor.HideSelection = false;
     }
 

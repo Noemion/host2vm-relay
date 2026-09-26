@@ -1,3 +1,4 @@
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 
 namespace Host2VMRelay;
@@ -11,6 +12,7 @@ internal static class AppIcon
     public static Icon Load(int pixels)
     {
         if (pixels <= 0) throw new ArgumentOutOfRangeException(nameof(pixels));
+        pixels = Math.Min(pixels, 256);
         using var stream = typeof(AppIcon).Assembly.GetManifestResourceStream("Host2VMRelay.AppIcon")
             ?? throw new InvalidOperationException("应用图标资源缺失。");
         using var reader = new BinaryReader(stream);
@@ -29,16 +31,23 @@ internal static class AppIcon
             uint bytes = reader.ReadUInt32(), start = reader.ReadUInt32();
             if (width != height || bytes == 0 || start < 6 + count * 16 || (long)start + bytes > stream.Length)
                 throw new InvalidDataException("ICO 图像范围无效。");
-            int score = Math.Abs(width - Math.Clamp(pixels, 1, 256)) * 2 + (width < pixels ? 1 : 0);
+            // Prefer downsampling over enlarging a smaller frame (e.g. 28/56px at 175%).
+            int score = width >= pixels ? width - pixels : 1024 + pixels - width;
             if (score < bestScore) { bestScore = score; offset = start; length = bytes; }
         }
-        // Select the PNG frame ourselves: Icon(Stream, size) can skip the 256px entry
-        // because ICO stores its dimensions as zero. Keep all nine sizes usable.
         stream.Position = offset;
         byte[] data = reader.ReadBytes(checked((int)length));
         if (data.Length != length) throw new InvalidDataException("ICO 图像数据不完整。");
         using var imageStream = new MemoryStream(data, false);
-        using var bitmap = new Bitmap(imageStream);
+        using var source = new Bitmap(imageStream);
+        using var bitmap = new Bitmap(pixels, pixels, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            graphics.CompositingMode = CompositingMode.SourceCopy;
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            graphics.DrawImage(source, new Rectangle(0, 0, pixels, pixels), 0, 0, source.Width, source.Height, GraphicsUnit.Pixel);
+        }
         IntPtr handle = bitmap.GetHicon();
         try
         {

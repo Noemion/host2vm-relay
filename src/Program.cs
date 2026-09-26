@@ -11,14 +11,15 @@ internal static class Program
         if (args.Contains("--self-test")) { SelfTest.Run(args.Last()); return; }
         bool smoke = args.Contains("--smoke");
         using var mutex = new Mutex(true, smoke ? "Local\\Host2VMRelay.Smoke" : "Local\\Host2VMRelay.Desktop", out bool first);
-        if (!first) { MessageBox.Show("应用已在运行，请从系统托盘打开。", "Host2VMRelay"); return; }
+        if (!first) { if (smoke) Environment.ExitCode = 1; else MessageBox.Show("应用已在运行，请从系统托盘打开。", "Host2VMRelay"); return; }
         string? smokeOutput = smoke ? Path.GetFullPath(args.Last()) : null;
         try
         {
             if (smoke)
             {
                 string folder = Path.GetDirectoryName(smokeOutput!)!;
-                // UI checks never read/migrate personal credentials or change the user's Clash rule file.
+                Directory.CreateDirectory(folder);
+                // Acceptance runs must not read/migrate credentials or alter live Clash rules.
                 Settings.Folder = Path.Combine(folder, "smoke-settings");
                 ClashRuleFile.Folder = Path.Combine(folder, "smoke-rules");
             }
@@ -26,11 +27,22 @@ internal static class Program
             if (smoke)
             {
                 string? scaleArgument = args.FirstOrDefault(a => a.StartsWith("--ui-scale=", StringComparison.Ordinal));
-                float scale = scaleArgument is null ? 1F : float.Parse(scaleArgument.Split('=')[1], CultureInfo.InvariantCulture) / 100F;
-                if (scale is < 1F or > 3F) throw new ArgumentException("UI scale must be between 100 and 300.");
+                int percent = scaleArgument is null ? 100 : int.Parse(scaleArgument.Split('=')[1], CultureInfo.InvariantCulture);
+                if (percent is not (100 or 125 or 150 or 175 or 200)) throw new ArgumentException("Acceptance scale must be 100, 125, 150, 175 or 200.");
+                bool native = args.Contains("--native-dpi");
+                string? monitorArgument = args.FirstOrDefault(a => a.StartsWith("--monitor=", StringComparison.Ordinal));
+                if (monitorArgument is not null)
+                {
+                    int index = int.Parse(monitorArgument.Split('=')[1], CultureInfo.InvariantCulture);
+                    var monitors = Screen.AllScreens;
+                    if (index < 0 || index >= monitors.Length) throw new ArgumentException("Monitor index is out of range.");
+                    Rectangle area = monitors[index].WorkingArea;
+                    form.StartPosition = FormStartPosition.Manual;
+                    form.Location = new Point(area.Left + 16, area.Top + 16);
+                }
                 form.Shown += async (_, _) =>
                 {
-                    try { await Task.Delay(300); form.CaptureTabs(smokeOutput!, scale); }
+                    try { await Task.Delay(300); form.CaptureTabs(smokeOutput!, percent / 100F, native); }
                     catch (Exception ex) { File.WriteAllText(Path.ChangeExtension(smokeOutput!, ".txt"), "FAIL " + ex); Environment.ExitCode = 1; }
                     finally { form.ExitForTest(); }
                 };
