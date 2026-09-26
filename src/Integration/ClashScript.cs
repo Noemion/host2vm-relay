@@ -13,13 +13,13 @@ public static class ClashScript
             .Replace("__VM_RULE_TYPE__", address.AddressFamily == AddressFamily.InterNetwork ? "IP-CIDR" : "IP-CIDR6");
     }
     private const string Template = """
-// Host2VM Relay: paste once into the active subscription's extension script.
-// Keep this app running. Rules update through a loopback HTTP rule provider.
+// Host2VMRelay: paste once into the active subscription's extension script.
+// Rules are read from a local file managed by Host2VMRelay.
 function main(config, profileName) {
   for (const proxy of config.proxies ?? []) {
     if (proxy.type === "mieru") proxy.udp = true;
   }
-  const node = "Host2VM Relay";
+  const node = "Host2VMRelay";
   const provider = "host2vm-relay-rules";
   config.proxies = [
     ...(config.proxies ?? []).filter(p => p.name !== node),
@@ -27,10 +27,9 @@ function main(config, profileName) {
   ];
   config["rule-providers"] = config["rule-providers"] ?? {};
   config["rule-providers"][provider] = {
-    type: "http", behavior: "classical", format: "text",
-    url: "http://127.0.0.1:17861/rules.txt",
-    path: "./rule-providers/host2vm-relay-rules.txt",
-    interval: 15, proxy: "DIRECT"
+    type: "file", behavior: "classical", format: "text",
+    path: "./rules/host2vm-relay-rules.txt",
+    interval: 3
   };
   const first = [
     "__VM_RULE_TYPE__,__VM_CIDR__,DIRECT,no-resolve",
