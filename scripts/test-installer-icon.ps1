@@ -15,6 +15,7 @@ Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 public static class H2VMSetupIconCheck {
@@ -37,19 +38,47 @@ public static class H2VMSetupIconCheck {
         try { using(var icon=Icon.FromHandle(handles[0])) return icon.ToBitmap(); }
         finally { DestroyIcon(handles[0]); }
     }
+    private static double VisibleDifference(Color a, Color b, int background) {
+        double aa=a.A/255.0, ba=b.A/255.0;
+        double r=Math.Abs(a.R*aa+background*(1-aa)-b.R*ba-background*(1-ba));
+        double g=Math.Abs(a.G*aa+background*(1-aa)-b.G*ba-background*(1-ba));
+        double blue=Math.Abs(a.B*aa+background*(1-aa)-b.B*ba-background*(1-ba));
+        return Math.Max(r,Math.Max(g,blue));
+    }
+    private static bool SameAppearance(Bitmap actual, Bitmap expected, out double mean, out int significant) {
+        mean=255; significant=int.MaxValue;
+        if(actual.Size!=expected.Size) return false;
+        int count=actual.Width*actual.Height, visible=0; double total=0; significant=0;
+        for(int y=0;y<actual.Height;y++) for(int x=0;x<actual.Width;x++) {
+            Color a=actual.GetPixel(x,y), b=expected.GetPixel(x,y);
+            if(a.A>0) visible++;
+            // Shell alpha premultiplication can round RGB by 1-2 units. Compare
+            // displayed appearance on both dark and light backgrounds, not raw ARGB equality.
+            double delta=Math.Max(VisibleDifference(a,b,0),VisibleDifference(a,b,255));
+            total+=delta;
+            if(delta>8) significant++;
+        }
+        mean=total/count;
+        return visible>=count/10 && mean<=1.0 && significant<=count/100;
+    }
+    private static void VerifyAppearance(Bitmap actual, Bitmap expected, string label, string folder) {
+        double mean; int significant;
+        bool equal=SameAppearance(actual,expected,out mean,out significant);
+        File.AppendAllText(Path.Combine(folder,"appearance.csv"),label+","+actual.Width+","+
+            mean.ToString("F6",CultureInfo.InvariantCulture)+","+significant+","+equal+Environment.NewLine);
+        if(!equal) throw new IOException("Icon appearance differs from reference: "+label);
+    }
     public static void Verify(string exe, string reference, string folder) {
+        File.WriteAllText(Path.Combine(folder,"appearance.csv"),"source,pixels,max-channel-mean,significant-pixels,match"+Environment.NewLine);
         foreach(int pixels in new[]{16,20,24,32,40,48,64,128,256}) {
             using(var actual=Extract(exe,pixels)) using(var expected=Extract(reference,pixels)) {
-                if(actual.Size!=expected.Size) throw new IOException("Icon dimensions differ at "+pixels);
-                int differences=0, visible=0;
-                for(int y=0;y<actual.Height;y++) for(int x=0;x<actual.Width;x++) {
-                    Color a=actual.GetPixel(x,y), b=expected.GetPixel(x,y);
-                    if(a.A>0) visible++;
-                    if(a.ToArgb()!=b.ToArgb()) differences++;
-                }
-                if(visible<actual.Width*actual.Height/10 || differences>actual.Width*actual.Height/20)
-                    throw new IOException("Setup icon is blank or differs from reference at "+pixels);
                 actual.Save(Path.Combine(folder,"extracted-"+pixels+".png"),ImageFormat.Png);
+                VerifyAppearance(actual,expected,"exe-"+pixels,folder);
+                double mean; int significant;
+                using(var blank=new Bitmap(expected.Width,expected.Height))
+                    if(SameAppearance(blank,expected,out mean,out significant)) throw new IOException("Blank icon was incorrectly accepted");
+                using(var source=SystemIcons.Application.ToBitmap()) using(var generic=new Bitmap(source,expected.Size))
+                    if(SameAppearance(generic,expected,out mean,out significant)) throw new IOException("Generic application icon was incorrectly accepted");
             }
         }
         foreach(bool small in new[]{true,false}) {
@@ -58,13 +87,10 @@ public static class H2VMSetupIconCheck {
                 throw new IOException("Shell did not return an installer icon");
             try {
                 using(var icon=Icon.FromHandle(info.hIcon)) using(var bitmap=icon.ToBitmap()) using(var expected=Extract(reference,bitmap.Width)) {
-                    if(bitmap.Size!=expected.Size) throw new IOException("Shell icon size differs from reference");
-                    int different=0;
-                    for(int y=0;y<bitmap.Height;y++) for(int x=0;x<bitmap.Width;x++)
-                        if(bitmap.GetPixel(x,y).ToArgb()!=expected.GetPixel(x,y).ToArgb()) different++;
-                    expected.Save(Path.Combine(folder,small?"shell-small-reference.png":"shell-large-reference.png"),ImageFormat.Png);
-                    bitmap.Save(Path.Combine(folder,small?"shell-small.png":"shell-large.png"),ImageFormat.Png);
-                    if(different>bitmap.Width*bitmap.Height/20) throw new IOException("Shell returned a generic or stale icon");
+                    string label=small?"shell-small":"shell-large";
+                    expected.Save(Path.Combine(folder,label+"-reference.png"),ImageFormat.Png);
+                    bitmap.Save(Path.Combine(folder,label+".png"),ImageFormat.Png);
+                    VerifyAppearance(bitmap,expected,label,folder);
                 }
             } finally { DestroyIcon(info.hIcon); }
         }
@@ -73,7 +99,7 @@ public static class H2VMSetupIconCheck {
 '@
 try {
     [H2VMSetupIconCheck]::Verify($Executable, $ReferenceIcon, $folder)
-    'PASS Setup.exe native icon extraction at 16/20/24/32/40/48/64/128/256 and Shell small/large extraction.' |
+    'PASS Setup.exe icon extraction at 16/20/24/32/40/48/64/128/256, Shell small/large appearance, and blank/generic negative controls.' |
         Set-Content (Join-Path $folder 'result.txt') -Encoding UTF8
     Get-Content (Join-Path $folder 'result.txt')
 }
