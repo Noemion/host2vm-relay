@@ -73,9 +73,87 @@ assert.deepEqual(Array.from(result['proxy-groups'][0].proxies),['Host2VMRelay','
 assert(!result.rules.some(r=>r.includes(',Host2VM Relay'))); assert(result['rule-providers'].keep);
 const provider = result['rule-providers']['host2vm-relay-rules'];
 assert.equal(provider.type,'file'); assert.equal(provider.path,'./rules/host2vm-relay-rules.txt'); assert(!('url' in provider));
+// Clash Verge compares Settings-owned TUN values before/after each extension.
+// Deleting inherited keys is also a conflicting change, not a way to silence it.
+const guiTunKeys = ['enable','stack','device','auto-route','route-exclude-address',
+  'auto-redirect','auto-detect-interface','dns-hijack','strict-route','mtu'];
+const json = value => JSON.parse(JSON.stringify(value));
+const guiTun = () => ({enable:true,stack:'mixed',device:'Mihomo','auto-route':false,
+  'route-exclude-address':['192.168.229.10/32'],'auto-redirect':false,
+  'auto-detect-interface':true,'dns-hijack':['any:53'],'strict-route':false,mtu:1500,
+  'udp-timeout':120});
+const ownedTun = tun => Object.fromEntries(guiTunKeys
+  .filter(key => Object.prototype.hasOwnProperty.call(tun ?? {}, key))
+  .map(key => [key, json(tun[key])]));
+let tunChecks = 0;
+function checkTun(name, callback) { callback(); tunChecks++; console.log('PASS TUN ' + name); }
+checkTun('unchanged app settings and custom fields', () => {
+  const input = {...base(),tun:guiTun()}, expected = json(input.tun);
+  const output = execute(scripts.empty, input);
+  assert.deepEqual(json(output.tun), expected);
+  assert(output.rules.includes('IP-CIDR,192.168.229.10/32,DIRECT,no-resolve'));
+  assert.equal(output['rule-providers']['host2vm-relay-rules'].type, 'file');
+});
+checkTun('reproduce dns-hijack-only conflict', () => {
+  const input = {...base(),tun:guiTun()}; input.tun['auto-route'] = true;
+  const app = ownedTun(input.tun), output = execute(scripts.empty, input);
+  const discarded = Object.keys(app).filter(key =>
+    JSON.stringify(output.tun[key]) !== JSON.stringify(app[key]));
+  assert.deepEqual(discarded, [], 'Settings-owned fields would be discarded by Verge');
+});
+const oldScripts = {
+  'legacy writes': `function main(c) {
+    c.tun = c.tun ?? {}; c.tun['auto-route'] = true;
+    c.tun['dns-hijack'] = [...new Set([...(c.tun['dns-hijack'] ?? []), 'any:53', 'tcp://any:53'])];
+    c.tun['route-exclude-address'] = [...new Set([...(c.tun['route-exclude-address'] ?? []), '192.168.99.10/32'])];
+    c.custom = 'preserved'; return c;
+  }`,
+  'in-place array changes': `function main(c) {
+    c.tun['dns-hijack'].push('tcp://any:53'); c.tun['route-exclude-address'].push('10.0.0.0/8');
+    c.custom = 'preserved'; return c;
+  }`,
+  'replacement tun': `function main(c) {
+    c.tun = {enable:false,stack:'system',mtu:9000,'udp-timeout':300};
+    c.custom = 'preserved'; return c;
+  }`,
+  'deleted tun': `function main(c) { delete c.tun; c.custom = 'preserved'; return c; }`,
+  'replacement config': `function main(c) { return {rules:c.rules,custom:'preserved'}; }`
+};
+for (const [name, source] of Object.entries(oldScripts)) {
+  checkTun('merged ' + name, () => {
+    const input = {...base(),tun:guiTun()}, expected = ownedTun(input.tun);
+    const output = execute(compose(source), input);
+    assert.deepEqual(ownedTun(output.tun), expected);
+    assert.equal(output.custom, 'preserved');
+    if (name === 'replacement tun') assert.equal(output.tun['udp-timeout'], 300);
+  });
+}
+checkTun('absent TUN settings stay absent', () => {
+  const output = execute(scripts.empty, base());
+  assert(!Object.prototype.hasOwnProperty.call(output, 'tun'));
+});
+checkTun('null TUN is preserved', () => {
+  assert.equal(execute(scripts.empty, {...base(),tun:null}).tun, null);
+});
+checkTun('old imports cannot inject defaults into absent settings', () => {
+  const output = execute(compose(oldScripts['legacy writes']), base());
+  assert.deepEqual(ownedTun(output.tun), {});
+  assert.equal(output.custom, 'preserved');
+});
+checkTun('custom non-GUI TUN fields remain supported', () => {
+  const output = execute(compose("function main(c) { c.tun = {'udp-timeout':300}; return c; }"), base());
+  assert.deepEqual(json(output.tun), {'udp-timeout':300});
+});
+checkTun('repeated merged script application is stable', () => {
+  const script = compose(oldScripts['legacy writes']);
+  const output = execute(script, {...base(),tun:guiTun()}), expected = json(output);
+  assert.deepEqual(json(execute(script, output)), expected);
+});
+console.log('PASS ' + tunChecks + ' managed TUN regression cases');
+
 // No host capabilities (fetch, require, fs) are needed by the generated JavaScript.
 const config = execute(scripts.empty, {'mixed-port':17891,mode:'rule','log-level':'info',dns:{enable:true,listen:'127.0.0.1:10553',nameserver:['1.1.1.1'],'fake-ip-filter':['+.lan','*.local']},rules:['MATCH,DIRECT']});
-config.tun.enable = false;
+config.tun = {...(config.tun ?? {}), enable:false};
 config['rule-providers']['host2vm-relay-rules']={type:'inline',behavior:'classical',payload:['DOMAIN,code.example.com','IP-CIDR,10.20.30.40/32,no-resolve']};
 const output = process.argv[2] || path.join(root,'artifacts/checks/mihomo.json');
 fs.mkdirSync(path.dirname(path.resolve(output)),{recursive:true}); fs.writeFileSync(output,JSON.stringify(config,null,2));

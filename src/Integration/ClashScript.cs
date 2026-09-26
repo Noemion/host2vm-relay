@@ -20,6 +20,18 @@ public static class ClashScript
 
     private const string Template = """
 function main(config, profileName) {
+  // These TUN fields belong to Clash Verge Settings, not extension scripts.
+  // Capture deep copies before the imported script can mutate arrays in place.
+  const guiTunKeys = ["enable", "stack", "device", "auto-route", "route-exclude-address",
+    "auto-redirect", "auto-detect-interface", "dns-hijack", "strict-route", "mtu"];
+  const inputTun = config.tun ?? {};
+  const savedTun = {};
+  for (const key of guiTunKeys) {
+    if (Object.prototype.hasOwnProperty.call(inputTun, key)) {
+      const value = inputTun[key];
+      savedTun[key] = value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+    }
+  }
   // Run the user's original entry point first, in its own lexical scope.
   if (typeof __h2vmOriginalMain !== "function" || __h2vmOriginalMain === main) {
     throw new Error("原有扩展脚本必须提供 main(config, profileName) 函数。");
@@ -81,10 +93,21 @@ function main(config, profileName) {
   dns["enhanced-mode"] = "fake-ip";
   dns["fake-ip-filter-mode"] = "rule";
   dns["fake-ip-filter"] = [priority, ...filters];
-  const tun = config.tun = config.tun ?? {};
-  tun["auto-route"] = true;
-  tun["dns-hijack"] = [...new Set([...(tun["dns-hijack"] ?? []), "any:53", "tcp://any:53"])];
-  tun["route-exclude-address"] = [...new Set([...(tun["route-exclude-address"] ?? []), "__VM_CIDR__"])];
+  // Restore the incoming GUI values, including absence. This also neutralizes
+  // TUN writes from imported older scripts without rewriting their source.
+  // Keep non-GUI TUN options and all unrelated user configuration intact.
+  if (config.tun != null || Object.keys(savedTun).length > 0) {
+    const tun = config.tun = config.tun ?? {};
+    if (typeof tun !== "object" || Array.isArray(tun)) {
+      throw new Error("TUN 配置必须为对象，请检查原有扩展脚本。");
+    }
+    for (const key of guiTunKeys) {
+      if (Object.prototype.hasOwnProperty.call(savedTun, key)) tun[key] = savedTun[key];
+      else delete tun[key];
+    }
+  }
+  // 在 Clash 的 TUN 设置中开启自动路由，DNS 劫持添加 any:53、tcp://any:53，
+  // 路由排除添加 __VM_CIDR__；不要在扩展脚本里写入这些界面字段。
   return config;
 }
 """;

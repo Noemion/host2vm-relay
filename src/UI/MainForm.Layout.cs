@@ -79,7 +79,7 @@ public sealed partial class MainForm
     private void BuildClash()
     {
         var grid = Grid(Page("接入 Clash"));
-        Row(grid, "① 生成脚本", UiLayout.Help("没有自定义脚本时直接生成并复制；已有脚本时打开合并窗口，粘贴或导入 .js 文件，生成保留原逻辑的完整脚本。只需整体替换 Clash 当前订阅的扩展脚本，然后保存并重新应用。"));
+        Row(grid, "① 生成脚本", UiLayout.Help("没有自定义脚本时直接生成并复制；已有脚本时打开合并窗口，粘贴或导入 .js 文件，生成完整脚本。TUN 界面字段沿用 Clash 传入值，原脚本的其他逻辑保留。整体替换当前订阅的扩展脚本，保存并重新应用。"));
         var buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = true };
         Button quickCopy = UiLayout.Button("直接生成并复制", 200), mergeScript = UiLayout.Button("导入 / 合并已有脚本", 220);
         quickCopy.Click += (_, _) =>
@@ -87,7 +87,7 @@ public sealed partial class MainForm
             try
             {
                 Clipboard.SetText(GenerateScript(null));
-                MessageBox.Show(this, "已复制完整脚本。请到 Clash 当前订阅 → 编辑扩展脚本，整体替换、保存并重新应用。", "接入 Clash");
+                MessageBox.Show(this, "已复制完整脚本。请到 Clash 当前订阅 → 编辑扩展脚本，整体替换、保存并重新应用。\nTUN、自动路由、DNS 劫持和路由排除需在 Clash 的设置界面单独配置。", "接入 Clash");
             }
             catch (Exception ex) { Error(ex); }
         };
@@ -97,7 +97,7 @@ public sealed partial class MainForm
             dialog.ShowDialog(this); existingClashScript = dialog.OriginalScript;
         };
         buttons.Controls.Add(quickCopy); buttons.Controls.Add(mergeScript); Row(grid, "", buttons);
-        Row(grid, "② TUN 设置", UiLayout.Help("选择规则模式，开启 TUN 和自动路由。\n路由排除添加虚拟机 IP/32（IPv6 用 /128）。\nDNS 劫持包含 any:53 与 tcp://any:53。\n脚本启用 Fake-IP，为目标域名优先分配映射地址。部分版本的界面会覆盖 TUN 设置，请在界面确认。需要支持 fake-ip-filter-mode: rule 的 Mihomo 内核。"));
+        Row(grid, "② TUN 设置", UiLayout.Help("选择规则模式，在 Clash 的设置 → TUN 中开启 TUN 和自动路由。\n路由排除添加虚拟机 IP/32（IPv6 用 /128），不要排除转发目标 IP。\nDNS 劫持分别添加 any:53 与 tcp://any:53，并保存。\n这些 TUN 界面字段不由扩展脚本设置；合并旧脚本时也保留 Clash 传入值，避免“应用设置接管，值已丢弃”的提示。\n脚本保留转发规则和 Fake-IP 配置，需要支持 fake-ip-filter-mode: rule 的 Mihomo 内核。"));
         Row(grid, "③ 验证", UiLayout.Help("连接隧道后打开目标网页，在 Clash 连接列表确认命中“Host2VMRelay”。底部状态仅表示本地规则是否启用。\nChrome 的自定义安全 DNS 可能绕过分流，请使用系统 DNS；规则也要包含登录跳转域名。"));
         var testUrl = new TextBox { Text = settings.TestUrl }; Row(grid, "测试网址", testUrl);
         var test = UiLayout.Button("通过 SOCKS5 测试网址", 240);
