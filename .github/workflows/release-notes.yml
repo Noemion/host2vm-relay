@@ -1,0 +1,36 @@
+name: Update published release notes
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/RELEASE_NOTES.md
+      - .github/workflows/release-notes.yml
+permissions:
+  contents: write
+concurrency:
+  group: release-notes
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Update the body of an existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content src/Host2VMRelay.csproj
+          $tag = "v$($project.Project.PropertyGroup.Version)"
+          $heading = Get-Content docs/RELEASE_NOTES.md -TotalCount 1
+          if ($heading -ne "# Host2VMRelay $tag") { throw 'Release notes version does not match project version' }
+          $tags = gh api --paginate "repos/$env:GH_REPO/releases" --jq '.[].tag_name'
+          if ($LASTEXITCODE -ne 0) { throw 'Release lookup failed' }
+          if ($tag -notin @($tags)) {
+            Write-Host "Release $tag is not published yet; the build workflow will publish its notes."
+            exit 0
+          }
+          # Editing the body preserves the release date, tag and downloadable assets.
+          gh release edit $tag --notes-file docs/RELEASE_NOTES.md
+          if ($LASTEXITCODE -ne 0) { throw 'Release notes update failed' }
