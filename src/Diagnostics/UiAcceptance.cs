@@ -228,7 +228,40 @@ internal sealed class UiAcceptance
     public static void Settle(Control form)
     {
         for (int i = 0; i < 3; i++) { form.PerformLayout(); Application.DoEvents(); }
+        var wait = System.Diagnostics.Stopwatch.StartNew();
+        while (All(form).OfType<PageHost>().Any(host => host.IsTransitioning) && wait.ElapsedMilliseconds < 1000)
+        {
+            Application.DoEvents(); Thread.Sleep(5);
+        }
         form.Refresh();
+    }
+
+    internal void RecordPageTransition(PageHost host)
+    {
+        var frames = new List<(Bitmap Image, long Milliseconds)>();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            do
+            {
+                Application.DoEvents();
+                var bitmap = new Bitmap(host.Width, host.Height);
+                using (var graphics = Graphics.FromImage(bitmap))
+                {
+                    var dc = graphics.GetHdc();
+                    try { Check(PrintWindow(host.Handle, dc, 1), "transition frame captures successfully"); }
+                    finally { graphics.ReleaseHdc(dc); }
+                }
+                frames.Add((bitmap, clock.ElapsedMilliseconds));
+                if (!host.IsTransitioning) break;
+                Thread.Sleep(10);
+            } while (clock.ElapsedMilliseconds < 1000 && frames.Count < 16);
+            Check(!host.IsTransitioning, "recorded transition finishes without a lingering overlay");
+            for (int i = 0; i < frames.Count; i++) frames[i].Image.Save(Path.Combine(folder, $"page-fade-{i:D2}.png"));
+            stages.Add(new { Stage = "page-fade", Method = "live-timer-window-capture",
+                FrameTimesMilliseconds = frames.Select(frame => frame.Milliseconds).ToArray() });
+        }
+        finally { foreach (var frame in frames) frame.Image.Dispose(); }
     }
     public void InspectTrayMenu(Form owner, bool dark)
     {
@@ -278,8 +311,9 @@ internal sealed class UiAcceptance
             finally { graphics.ReleaseHdc(dc); }
         }
         var colors = new HashSet<int>();
-        for (int y = 0; y < bitmap.Height; y += 13)
-            for (int x = 0; x < bitmap.Width; x += 13) colors.Add(bitmap.GetPixel(x, y).ToArgb());
+        int stride = Math.Clamp(Math.Min(bitmap.Width, bitmap.Height) / 100, 1, 13);
+        for (int y = 0; y < bitmap.Height; y += stride)
+            for (int x = 0; x < bitmap.Width; x += stride) colors.Add(bitmap.GetPixel(x, y).ToArgb());
         Check(colors.Count > 8, "window capture contains rendered content");
         bitmap.Save(Path.Combine(folder, name));
     }

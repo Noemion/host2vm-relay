@@ -107,6 +107,7 @@ public sealed partial class MainForm
         try
         {
             if (!audit.CheckEnvironment(this)) return;
+            VerifyPageTransition(audit);
             audit.Check(AutoScaleMode == AutoScaleMode.Dpi && Font.Unit == GraphicsUnit.Point, "readable DPI-aware form");
             host.Name = "host"; user.Name = "user"; secret.Name = "secret"; keyPath.Name = "keyPath";
             ruleText.Name = "rules"; log.Name = "log"; port.Name = "sshPort"; socksPort.Name = "socksPort";
@@ -238,5 +239,43 @@ public sealed partial class MainForm
         }
         catch (Exception ex) { audit.Check(false, ex.ToString()); }
         finally { audit.Finish(path); }
+    }
+
+    private void VerifyPageTransition(UiAcceptance audit)
+    {
+        SelectPage(0); UiAcceptance.Settle(this);
+        string savedHost = host.Text;
+        host.Text = "animation-input-preserved";
+        var cover = pages.Controls.OfType<PageFade>().Single();
+        SelectPage(4); UiAcceptance.Settle(this); // Warm up settings layout first.
+        SelectPage(0);
+        if (PageFade.AnimationAllowed)
+        {
+            audit.Check(pages.IsTransitioning, "page switch starts a short fade");
+            UiAcceptance.Settle(this);
+            audit.Check(cover.PaintCount >= 2, "fade paints multiple progressive frames");
+        }
+        else audit.Check(!pages.IsTransitioning, "system reduced-motion or high-contrast preference skips fading");
+        audit.Check(!pages.IsTransitioning && !cover.Visible, "fade releases its cover after completion");
+        SelectPage(4);
+        audit.RecordPageTransition(pages);
+        for (int i = 0; i < 10; i++) SelectPage(i % 5);
+        SelectPage(0); UiAcceptance.Settle(this);
+        audit.Check(pages.SelectedIndex == 0 && pages.Pages.Count(page => page.Visible) == 1,
+            "rapid navigation keeps only the latest destination");
+        audit.Check(host.Text == "animation-input-preserved", "animation preserves live input controls");
+        SelectPage(4);
+        var input = Message.Create(pages.Pages[4].Handle, 0x100 /* WM_KEYDOWN */, new IntPtr((int)Keys.Tab), IntPtr.Zero);
+        audit.Check(!cover.PreFilterMessage(ref input) && !pages.IsTransitioning,
+            "input dismisses the cover without consuming the first keystroke");
+        SelectPage(0);
+        Size previous = pages.Size;
+        pages.Size = new Size(previous.Width - 1, previous.Height);
+        audit.Check(!pages.IsTransitioning, "resizing cancels a stale animation frame");
+        pages.Size = previous;
+        SelectPage(4); pages.Hide();
+        audit.Check(!pages.IsTransitioning, "hiding the window cancels the transition");
+        pages.Show(); SelectPage(0); UiAcceptance.Settle(this);
+        host.Text = savedHost;
     }
 }

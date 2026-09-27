@@ -17,7 +17,9 @@ A restrained desktop workspace: neutral canvas, white surfaces, graphite text an
 
 Five destinations: Connection, Rules, Clash integration, Logs and Settings. At less than 688 logical pixels of client width, navigation moves above the content; none of the destinations is hidden. Alt+1 through Alt+5 and Ctrl+Tab/Ctrl+Shift+Tab navigate pages.
 
-`PageHost` owns persistent page panels and switches their visibility in one layout transaction. The shell owns navigation labels and shortcuts. No hidden native tab header or `TCM_ADJUSTRECT` override is involved. Pages retain input and scroll position when hidden. Switching does not animate or recreate controls.
+`PageHost` owns persistent page panels and switches their visibility in one layout transaction. The shell owns navigation labels and shortcuts. No hidden native tab header or `TCM_ADJUSTRECT` override is involved. Pages retain input and scroll position when hidden.
+
+Navigation reveals the new page with a 120 ms ease-out fade. `PageFade` renders one transient viewport snapshot over the canvas; live native input controls remain underneath without opacity or geometry changes. A UI timer requests frames only during the transition. New navigation replaces the previous transition; input, hiding, resizing and disposal cancel it immediately. The snapshot is capped at 32 MiB and released at completion. Failed or slow captures use normal painting. Windows reduced-motion and high-contrast preferences disable the fade. No screen capture or per-frame layout is involved.
 
 `PageScrollPanel` delegates scrolling and clipping to Windows. After visibility, scroll or size changes, it queues one invalidation of the complete child hierarchy. Multiple events share a pending callback; there is no redraw timer or synchronous `Refresh`/`DoEvents` inside layout. Rounded controls own their local painting only. Avoid manual content offsets and page-wide compositing styles that interfere with native input windows.
 

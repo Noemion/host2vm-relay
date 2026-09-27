@@ -8,6 +8,7 @@ namespace Host2VMRelay;
 internal sealed class PageHost : Panel
 {
     private readonly List<Panel> pages = new();
+    private readonly PageFade fade = new();
     private int selectedIndex = -1;
     public IReadOnlyList<Panel> Pages => pages;
     public int PageCount => pages.Count;
@@ -17,6 +18,7 @@ internal sealed class PageHost : Panel
     {
         Dock = DockStyle.Fill; Margin = Padding.Empty;
         BackColor = UiTheme.Canvas; TabStop = false;
+        Controls.Add(fade);
     }
 
     public void AddPage(Panel page)
@@ -33,6 +35,8 @@ internal sealed class PageHost : Panel
         {
             if (value < 0 || value >= pages.Count) throw new ArgumentOutOfRangeException(nameof(value));
             if (value == selectedIndex) return;
+            bool animate = selectedIndex >= 0 && Visible && IsHandleCreated && PageFade.AnimationAllowed;
+            fade.Stop();
             SuspendLayout();
             try
             {
@@ -42,6 +46,22 @@ internal sealed class PageHost : Panel
             }
             finally { ResumeLayout(true); }
             SelectedIndexChanged?.Invoke(this, EventArgs.Empty);
+            if (animate) fade.Start(pages[value]);
         }
+    }
+
+    internal bool IsTransitioning => fade.IsRunning;
+    internal void EndTransition() => fade.Stop();
+
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        if (!Visible) fade.Stop();
+        base.OnVisibleChanged(e);
+    }
+
+    protected override void OnSizeChanged(EventArgs e)
+    {
+        fade.Stop();
+        base.OnSizeChanged(e);
     }
 }
