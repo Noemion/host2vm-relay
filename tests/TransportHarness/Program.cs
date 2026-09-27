@@ -25,6 +25,16 @@ if (args.Length == 4 && args[0] == "--ssh-handshake")
 }
 
 if (args.Length == 1 && args[0] == "--health-check") { await HealthChecks.RunAsync(); return; }
+if (args.Length == 2 && args[0] == "--tcp-check")
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+    for (int i = 0; i < int.Parse(args[1]); i++)
+    {
+        await TcpRelayChecks.RunAsync((ok, label) => { if (!ok) throw new IOException(label); }, timeout.Token);
+        Console.WriteLine($"PASS TCP lifecycle iteration {i + 1}");
+    }
+    return;
+}
 if (args.Length == 7 && args[0] == "--session-check") { await RustSessionChecks.RunAsync(args[1..]); return; }
 if (args.Length == 2 && args[0] == "--local-check") { await LocalTransportChecks.RunAsync(args[1]); return; }
 if (args.Length < 6) throw new ArgumentException("host sshPort user privateKey fingerprint scriptOutput");

@@ -6,6 +6,7 @@ internal static class TcpRelayChecks
 {
     public static async Task RunAsync(Action<bool, string> check, CancellationToken token)
     {
+        await CheckCancellationCallbackAsync(check, token);
         using var upstream = new TcpListener(IPAddress.Loopback, 0);
         upstream.Start();
         var events = new System.Collections.Concurrent.ConcurrentQueue<string>();
@@ -34,7 +35,9 @@ internal static class TcpRelayChecks
         {
             for (int i = 0; i < 100 && relay.ActiveConnections != 0; i++)
                 await Task.Delay(10, token);
-            check(relay.ActiveConnections == 0, scenario);
+            if (relay.ActiveConnections != 0)
+                throw new IOException(scenario + $"; active={relay.ActiveConnections}; transfers={relay.ActiveTransfers}\n" + string.Join("\n", events));
+            check(true, scenario);
             check(events.Any(line => line.Contains("127.0.0.1:80")), "TCP forwarding log identifies destination");
         }
 
@@ -103,5 +106,33 @@ internal static class TcpRelayChecks
             relay.Dispose();
             await Drained("server disposal drains both TCP copy tasks and releases their slot");
         }
+    }
+
+    private static async Task CheckCancellationCallbackAsync(Action<bool, string> check, CancellationToken token)
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using var left = new PendingReadStream();
+        using var right = new PendingReadStream();
+        bool blockedCompletion = false;
+        var copying = DuplexRelay.RunAsync(left, right, () => { }, () => { }, () =>
+        {
+            // Model a socket cancellation callback that joins its I/O completion
+            // worker. The worker is allowed to run await continuations inline.
+            var completion = Task.Run(() => { left.CancelRead(); right.CancelRead(); });
+            blockedCompletion = !completion.Wait(TimeSpan.FromSeconds(2));
+        }, stop.Token);
+        await Task.Run(stop.Cancel, token);
+        try { await copying.WaitAsync(TimeSpan.FromSeconds(5), token); }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+        check(!blockedCompletion, "TCP cancellation does not block an I/O completion on its own cancellation callback");
+    }
+
+    private sealed class PendingReadStream : MemoryStream
+    {
+        // Inline continuation is intentional: reproduce the native completion
+        // boundary instead of hiding it with RunContinuationsAsynchronously.
+        private readonly TaskCompletionSource<int> pending = new();
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default) => new(pending.Task);
+        public void CancelRead() => pending.TrySetCanceled();
     }
 }
