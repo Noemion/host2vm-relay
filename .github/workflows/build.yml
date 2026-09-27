@@ -31,9 +31,14 @@ jobs:
       - name: Build and check scripts, icons and scaled layouts
         shell: pwsh
         run: .\build.ps1 -Test
-      - name: Check native Windows UDP transport
+      - name: Check native Windows transport and session lifecycle
         shell: pwsh
         run: dotnet run --project tests/TransportHarness/TransportHarness.csproj -c Release -- --local-check artifacts/checks/windows-transport.json
+      - name: Check Windows UDP helper DNS isolation
+        shell: pwsh
+        run: |
+          python tests/test-udp-helper.py
+          if ($LASTEXITCODE -ne 0) { throw 'UDP helper regression checks failed' }
       - name: Upload check results and layout screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -87,6 +92,8 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Build production transport integration harness
         run: dotnet build tests/TransportHarness/TransportHarness.csproj -c Release
+      - name: Check Linux transport lifecycle
+        run: dotnet run --project tests/TransportHarness/TransportHarness.csproj -c Release --no-build -- --local-check artifacts/checks/network/local-transport.json
       - name: Test UDP bridge protocol and real sockets
         run: python3 tests/test-udp-helper.py
       - name: Test transparent TUN, SSH and automatic host fallback

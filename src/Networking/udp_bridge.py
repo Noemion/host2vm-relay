@@ -104,16 +104,89 @@ def probe_udp(nonce):
             return receiver.recvfrom(64)[0] == nonce
 
 
+class Resolution:
+    def __init__(self, host, port):
+        self.host, self.port = host, port
+        self.deadline = time.monotonic() + 2
+        self.done = threading.Event()
+        self.addresses, self.error = None, None
+
+
+class Resolver:
+    """Bounded daemon workers: libc DNS cannot be cancelled, but never blocks the relay.
+
+    Expired jobs are ignored; four stuck OS lookups cannot spawn more threads or
+    prevent probes, numeric-IP traffic, shutdown, or existing sessions from working.
+    Cache access and job consumption belong exclusively to the main event loop.
+    """
+    def __init__(self):
+        self.jobs = queue.Queue(32)
+        self.cache = {}
+        for _ in range(4):
+            threading.Thread(target=self.worker, daemon=True).start()
+
+    def worker(self):
+        while not stopping.is_set():
+            try:
+                job = self.jobs.get(timeout=.2)
+            except queue.Empty:
+                continue
+            if time.monotonic() >= job.deadline:
+                continue
+            try:
+                job.addresses = socket.getaddrinfo(job.host, job.port, socket.AF_UNSPEC, socket.SOCK_DGRAM)
+            except (OSError, UnicodeError) as exc:
+                job.error = str(exc)
+            finally:
+                job.done.set()
+
+    def request(self, host, port, allow_pending=True):
+        job = Resolution(host, port)
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            ip = None
+        if ip is not None:
+            # Numeric destinations do not need a resolver worker, even under DNS overload.
+            family = socket.AF_INET if ip.version == 4 else socket.AF_INET6
+            remote = (str(ip), port) if ip.version == 4 else (str(ip), port, 0, 0)
+            job.addresses = [(family, socket.SOCK_DGRAM, 0, '', remote)]
+            job.done.set()
+        elif (cached := self.cache.get((host, port))) and cached[0] > time.monotonic():
+            job.addresses = cached[1]
+            job.done.set()
+        else:
+            if not allow_pending:
+                raise ValueError('pending destination limit reached')
+            try:
+                self.jobs.put_nowait(job)
+            except queue.Full:
+                raise ValueError('DNS queue limit reached')
+        return job
+
+    def remember(self, job):
+        if len(self.cache) >= 128:
+            self.cache.pop(next(iter(self.cache)))
+        self.cache[(job.host, job.port)] = (time.monotonic() + 60, job.addresses)
+
+
 def main():
     selector = selectors.DefaultSelector()
     sessions = {}
+    pending = {}
+    resolver = Resolver()
     reader = threading.Thread(target=read_input, daemon=True)
     writer = threading.Thread(target=write_output, daemon=True)
     reader.start()
     writer.start()
     emit(b'H', 0, b'Host2VMRelay-UDP/1')
 
+    def error(ident, exc):
+        emit(b'E', ident, str(exc).encode('utf-8', errors='replace')[:256])
+
     def remove(key):
+        # A late DNS result must never resurrect a closed association.
+        pending.pop(key, None)
         item = sessions.pop(key, None)
         if item:
             try:
@@ -121,6 +194,28 @@ def main():
             except (KeyError, ValueError):
                 pass
             item[0].close()
+
+    def open_session(key, addresses):
+        last = None
+        for family, socktype, proto, _, remote in addresses:
+            target = ipaddress.ip_address(remote[0].split('%')[0])
+            if target.is_multicast or target.is_unspecified or str(target) == '255.255.255.255':
+                continue
+            udp = socket.socket(family, socktype, proto)
+            try:
+                udp.connect(remote)
+                udp.setblocking(False)
+                selector.register(udp, selectors.EVENT_READ, key)
+                sessions[key] = [udp, time.monotonic()]
+                return
+            except OSError as exc:
+                last = exc
+                udp.close()
+        raise OSError('no usable unicast destination') from last
+
+    def send(key, data):
+        sessions[key][0].send(data)
+        sessions[key][1] = time.monotonic()
 
     last_input = time.monotonic()
     try:
@@ -136,11 +231,14 @@ def main():
                 last_input = time.monotonic()
                 opcode, ident, body = frame[:1], struct.unpack('!I', frame[1:5])[0], frame[5:]
                 if opcode == b'P':
-                    if 1 <= len(body) <= 64 and probe_udp(body):
-                        emit(b'R', ident, body)
+                    try:
+                        if 1 <= len(body) <= 64 and probe_udp(body):
+                            emit(b'R', ident, body)
+                    except OSError as exc:
+                        error(ident, exc)
                     continue
                 if opcode == b'C':
-                    for key in list(sessions):
+                    for key in list(sessions) + list(pending):
                         if key[0] == ident:
                             remove(key)
                     continue
@@ -149,34 +247,39 @@ def main():
                 try:
                     host, port, data = decode(body)
                     key = (ident, host, port)
-                    if key not in sessions:
-                        if len(sessions) >= MAX_SESSIONS:
+                    if key in sessions:
+                        send(key, data)
+                    elif key in pending:
+                        # UDP overload drops packets; never grow an unbounded DNS backlog.
+                        if len(pending[key][1]) < 8:
+                            pending[key][1].append(data)
+                    else:
+                        if len(sessions) + len(pending) >= MAX_SESSIONS:
                             raise ValueError('UDP session limit reached')
-                        addresses = socket.getaddrinfo(host, port, socket.AF_UNSPEC, socket.SOCK_DGRAM)
-                        last = None
-                        for family, socktype, proto, _, remote in addresses:
-                            target = ipaddress.ip_address(remote[0].split('%')[0])
-                            if target.is_multicast or target.is_unspecified or str(target) == '255.255.255.255':
-                                continue
-                            udp = socket.socket(family, socktype, proto)
-                            try:
-                                udp.connect(remote)
-                                udp.setblocking(False)
-                                selector.register(udp, selectors.EVENT_READ, key)
-                                sessions[key] = [udp, time.monotonic()]
-                                break
-                            except OSError as exc:
-                                last = exc
-                                udp.close()
-                        if key not in sessions:
-                            raise OSError('no usable unicast destination') from last
-                    udp, _ = sessions[key]
-                    udp.send(data)
-                    sessions[key][1] = time.monotonic()
+                        job = resolver.request(host, port, len(pending) < 32)
+                        if job.done.is_set():
+                            open_session(key, job.addresses)
+                            send(key, data)
+                        else:
+                            pending[key] = (job, [data])
                 except (ValueError, OSError, UnicodeError, IndexError, struct.error) as exc:
-                    emit(b'E', ident, str(exc).encode('utf-8', errors='replace')[:256])
-            # Windows select() rejects an empty descriptor set; idle bridges must
-            # still process control/probe frames before the first UDP association.
+                    error(ident, exc)
+            for key, (job, packets) in list(pending.items()):
+                try:
+                    if time.monotonic() >= job.deadline:
+                        raise TimeoutError('destination DNS lookup timed out')
+                    if not job.done.is_set():
+                        continue
+                    if job.error is not None:
+                        raise OSError(job.error)
+                    resolver.remember(job)
+                    open_session(key, job.addresses)
+                    for data in packets:
+                        send(key, data)
+                except (OSError, ValueError) as exc:
+                    error(key[0], exc)
+                pending.pop(key, None)
+            # Windows select() rejects an empty descriptor set.
             if selector.get_map():
                 events = selector.select(.01)
             else:
@@ -198,6 +301,7 @@ def main():
                     remove(key)
     finally:
         stopping.set()
+        pending.clear()
         for key in list(sessions):
             remove(key)
         selector.close()

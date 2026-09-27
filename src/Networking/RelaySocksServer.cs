@@ -17,12 +17,16 @@ internal sealed class RelaySocksServer : IDisposable
     private readonly CancellationTokenSource lifetime = new();
     private readonly ConcurrentDictionary<TcpClient, byte> clients = new();
     private readonly SemaphoreSlim slots = new(128);
+    private readonly TimeSpan udpIdleTimeout;
     public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
+    internal int ActiveConnections => clients.Count;
     public bool TcpHealthy { get { var s = Volatile.Read(ref upstream); return s.Port > 0 && Environment.TickCount64 < s.Expires; } }
     public bool UdpHealthy => Volatile.Read(ref upstream).Udp?.Healthy == true;
 
-    public RelaySocksServer(int port)
+    public RelaySocksServer(int port, TimeSpan? udpIdleTimeout = null)
     {
+        this.udpIdleTimeout = udpIdleTimeout ?? TimeSpan.FromMinutes(2);
+        if (this.udpIdleTimeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(udpIdleTimeout));
         listener = new TcpListener(IPAddress.Loopback, port); listener.Start(128); _ = AcceptAsync();
     }
     public void SetUpstream(int tcpPort, UdpTunnel? udp)
@@ -36,8 +40,11 @@ internal sealed class RelaySocksServer : IDisposable
             while (!lifetime.IsCancellationRequested)
             {
                 var client = await listener.AcceptTcpClientAsync(lifetime.Token).ConfigureAwait(false);
-                if (!await slots.WaitAsync(0, lifetime.Token).ConfigureAwait(false)) { client.Dispose(); continue; }
-                clients.TryAdd(client, 0); _ = ServeAsync(client);
+                // Admission is nonblocking. A cancelled token here would otherwise
+                // throw after accept and leak the newly accepted socket.
+                if (!slots.Wait(0)) { client.Dispose(); continue; }
+                clients.TryAdd(client, 0);
+                _ = ServeAsync(client);
             }
         }
         catch (Exception ex) when (ex is SocketException or ObjectDisposedException or OperationCanceledException) { }
@@ -105,19 +112,16 @@ internal sealed class RelaySocksServer : IDisposable
                     await stream.WriteAsync(header[..3].Concat(bound).ToArray(), token).ConfigureAwait(false);
                     if (header[1] != 0) return;
                     tokenSource.CancelAfter(Timeout.InfiniteTimeSpan);
-                    Task up = CopyAsync(stream, tunnel, remote, token), down = CopyAsync(tunnel, stream, client, token);
-                    await Task.WhenAll(up, down).ConfigureAwait(false);
+                    await DuplexRelay.RunAsync(stream, tunnel,
+                        () => client.Client.Shutdown(SocketShutdown.Send),
+                        () => remote.Client.Shutdown(SocketShutdown.Send),
+                        () => { client.Dispose(); remote.Dispose(); }, token).ConfigureAwait(false);
                 }
                 else await stream.WriteAsync(Reply(7), token).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException or OperationCanceledException) { }
             finally { clients.TryRemove(client, out _); slots.Release(); }
         }
-    }
-    private static async Task CopyAsync(Stream source, Stream destination, TcpClient target, CancellationToken token)
-    {
-        await source.CopyToAsync(destination, token).ConfigureAwait(false);
-        try { target.Client.Shutdown(SocketShutdown.Send); } catch (SocketException) { }
     }
     private async Task HealthAsync(Stream stream, CancellationToken token)
     {
@@ -156,7 +160,8 @@ internal sealed class RelaySocksServer : IDisposable
                     var expected = Volatile.Read(ref peer);
                     if (expected is not null && !expected.Equals(incoming.RemoteEndPoint)) continue;
                     Interlocked.CompareExchange(ref peer, incoming.RemoteEndPoint, null);
-                    stop.CancelAfter(TimeSpan.FromMinutes(2)); tunnel.Send(id, incoming.Buffer);
+                    // Activity means successfully queued/sent traffic in either direction.
+                    if (tunnel.Send(id, incoming.Buffer)) stop.CancelAfter(udpIdleTimeout);
                 }
             }
             async Task Send()
@@ -166,9 +171,10 @@ internal sealed class RelaySocksServer : IDisposable
                     var destination = Volatile.Read(ref peer);
                     if (destination is null || !ValidDatagram(packet)) continue;
                     await socket.SendAsync(packet, destination, stop.Token).ConfigureAwait(false);
+                    stop.CancelAfter(udpIdleTimeout);
                 }
             }
-            stop.CancelAfter(TimeSpan.FromMinutes(2));
+            stop.CancelAfter(udpIdleTimeout);
             Task receive = Receive(), send = Send();
             Task closed = control.GetStream().ReadAsync(new byte[1], stop.Token).AsTask();
             await Task.WhenAny(receive, send, closed).ConfigureAwait(false);

@@ -52,6 +52,59 @@ internal static class UpdateSelfTest
         File.WriteAllText(Path.Combine(Path.GetDirectoryName(output)!, "incremental-cases.json"),
             JsonSerializer.Serialize(cases, new JsonSerializerOptions { WriteIndented = true }));
         TestStorage(output, check);
+        TestSaveFailure(output, check);
+    }
+    private static void TestSaveFailure(string output, Action<bool, string> check)
+    {
+        string originalFolder = Settings.Folder;
+        string root = Path.Combine(Path.GetDirectoryName(output)!, "save-failure-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Settings.Folder = root;
+            var active = new Settings { Rules = "saved.example" };
+            active.Save();
+            string path = Path.Combine(root, "settings.json");
+            string before = File.ReadAllText(path);
+            bool failed = false;
+            using (var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                try
+                {
+                    active = active.SaveUpdated(candidate =>
+                    {
+                        candidate.Rules = "unsaved.example";
+                        candidate.HostKeys["new-host"] = "uncommitted-fingerprint";
+                    });
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { failed = true; }
+            }
+            check(failed && active.Rules == "saved.example" && active.HostKeys.Count == 0,
+                "failed atomic save does not publish rules or trust changes to the active profile");
+            check(File.ReadAllText(path) == before && Directory.GetFiles(root, "*.tmp").Length == 0,
+                "failed save preserves disk content and removes its temporary file");
+            check(Rules.Compile(active.Rules) == "DOMAIN,saved.example\n",
+                "route polling after a failed save still compiles the last saved rules");
+            var previous = active;
+            active = active.SaveUpdated(candidate =>
+            {
+                candidate.Rules = "committed.example";
+                candidate.HostKeys["new-host"] = "committed-fingerprint";
+            });
+            check(Settings.Load().Rules == active.Rules && previous.Rules == "saved.example" && previous.HostKeys.Count == 0,
+                "successful save publishes a detached profile after persistence");
+            foreach (string invalid in new[] { "{\"Port\":0}", "{\"SocksPort\":65536}", "{\"HostKeys\":null}", "{\"Rules\":null}" })
+            {
+                File.WriteAllText(path, invalid);
+                bool rejected = false;
+                try { Settings.Load(); } catch (IOException) { rejected = true; }
+                check(rejected && File.ReadAllText(path) == invalid, "invalid profile is rejected without rewriting: " + invalid);
+            }
+        }
+        finally
+        {
+            Settings.Folder = originalFolder;
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
     }
     private static void TestStorage(string output, Action<bool, string> check)
     {

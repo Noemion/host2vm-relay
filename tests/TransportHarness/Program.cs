@@ -1,48 +1,34 @@
 using Host2VMRelay;
-using Renci.SshNet;
-using System.Security.Cryptography;
 using System.Text.Json;
 
 if (args.Length == 2 && args[0] == "--local-check") { await LocalTransportChecks.RunAsync(args[1]); return; }
 if (args.Length < 6) throw new ArgumentException("host sshPort user privateKey fingerprint scriptOutput");
-using var key = new PrivateKeyFile(args[3]);
-using var client = new SshClient(new ConnectionInfo(args[0], int.Parse(args[1]), args[2], new PrivateKeyAuthenticationMethod(args[2], key)) { Timeout = TimeSpan.FromSeconds(3) });
-client.HostKeyReceived += (_, e) => e.CanTrust = "SHA256:" + Convert.ToBase64String(SHA256.HashData(e.HostKey)).TrimEnd('=') == args[4];
-client.KeepAliveInterval = TimeSpan.FromSeconds(2);
-using var relay = new RelaySocksServer(18090);
-using var stop = new CancellationTokenSource();
-ForwardedPortDynamic? forward = null;
-UdpTunnel? udp = null;
-File.WriteAllText(args[5], ClashScript.Generate(relay.Port, args[0]));
-Console.WriteLine(JsonSerializer.Serialize(new { port = relay.Port, starting = true }));
-while (!stop.IsCancellationRequested)
+var options = new RelayConnectionOptions(args[0], int.Parse(args[1]), args[2], 18090, true, args[3], "", true);
+RelaySession? session = null;
+File.WriteAllText(args[5], ClashScript.Generate(options.SocksPort, args[0]));
+Console.WriteLine(JsonSerializer.Serialize(new { port = options.SocksPort, starting = true }));
+try
 {
-    try
+    while (true)
     {
-        if (!client.IsConnected)
+        try
         {
-            forward?.Dispose(); udp?.Dispose(); udp = null;
-            client.Connect(); forward = new ForwardedPortDynamic("127.0.0.1", 0);
-            client.AddForwardedPort(forward); forward.Start();
+            if (session?.IsConnected != true)
+            {
+                session?.Dispose();
+                session = await RelaySession.OpenAsync(options, fingerprint => fingerprint == args[4], Console.Error.WriteLine);
+            }
+            if (!await session.RefreshAsync(true)) throw new IOException("SSH probe failed");
+            var health = session.Health;
+            Console.WriteLine(JsonSerializer.Serialize(new { tcp = health.Tcp, udp = health.Udp }));
         }
-        using (var probe = client.CreateCommand("printf h2vm-alive"))
+        catch (Exception ex)
         {
-            probe.CommandTimeout = TimeSpan.FromSeconds(2);
-            if (probe.Execute() != "h2vm-alive") throw new IOException("SSH probe failed");
+            Console.Error.WriteLine("RECONNECT: " + ex.Message);
+            session?.Dispose();
+            session = null;
         }
-        if (udp is null || !await udp.ProbeAsync())
-        {
-            udp?.Dispose(); udp = null;
-            try { udp = await UdpTunnel.StartAsync(client); } catch (Exception ex) { Console.Error.WriteLine("UDP: " + ex.Message); }
-        }
-        relay.SetUpstream((int)forward!.BoundPort, udp);
-        Console.WriteLine(JsonSerializer.Serialize(new { tcp = relay.TcpHealthy, udp = relay.UdpHealthy }));
+        await Task.Delay(1500);
     }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine("RECONNECT: " + ex.Message);
-        relay.SetUpstream(0, null); udp?.Dispose(); udp = null;
-        try { client.Disconnect(); } catch { }
-    }
-    await Task.Delay(1500);
 }
+finally { session?.Dispose(); }

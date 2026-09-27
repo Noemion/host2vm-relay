@@ -13,7 +13,7 @@ internal static class LocalTransportChecks
         resultPath = Path.GetFullPath(resultPath);
         Directory.CreateDirectory(Path.GetDirectoryName(resultPath)!);
         var checks = new List<string>();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(40));
         var token = timeout.Token;
         void Check(bool ok, string label)
         {
@@ -22,6 +22,8 @@ internal static class LocalTransportChecks
         }
         try
         {
+            await TcpRelayChecks.RunAsync(Check, token);
+            await SessionChecks.RunAsync(Check, token);
             using var resource = typeof(UdpTunnel).Assembly.GetManifestResourceStream("Host2VMRelay.UdpBridge")!;
             using var reader = new StreamReader(resource);
             string code = await reader.ReadToEndAsync(token);
@@ -39,7 +41,7 @@ internal static class LocalTransportChecks
                 using var tunnel = await UdpTunnel.OpenStreamsAsync(process.StandardInput.BaseStream, process.StandardOutput.BaseStream,
                     () => { if (!process.HasExited) process.Kill(); }, token);
                 Check(tunnel.Healthy && await tunnel.ProbeAsync(token), "native host streams exchange a nonce checked by real UDP");
-                using var relay = new RelaySocksServer(0);
+                using var relay = new RelaySocksServer(0, TimeSpan.FromSeconds(1));
                 relay.SetUpstream(0, tunnel);
                 using var echo = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
                 using var packets = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
@@ -67,6 +69,25 @@ internal static class LocalTransportChecks
                     var response = await packets.ReceiveAsync(token);
                     Check(response.Buffer.AsSpan().SequenceEqual(datagram), "native UDP response preserves address and " + payload.Length + " bytes");
                 }
+                // Subscribe once, then receive only. Each reply must renew the idle timer.
+                byte[] subscription = { 0, 0, 0, 1, 127, 0, 0, 1, (byte)(echoPort >> 8), (byte)echoPort, 42 };
+                await packets.SendAsync(subscription, destination, token);
+                var subscriber = await echo.ReceiveAsync(token);
+                bool receivedAll = true;
+                for (int i = 0; i < 8; i++)
+                {
+                    await Task.Delay(250, token);
+                    await echo.SendAsync(new byte[] { (byte)i }, subscriber.RemoteEndPoint, token);
+                    var pushed = await packets.ReceiveAsync(token);
+                    receivedAll &= pushed.Buffer[^1] == i;
+                }
+                Check(receivedAll, "receive-only UDP remains active beyond its idle timeout");
+                // No traffic now: genuine idle associations must still release their slot.
+                int eof = await stream.ReadAsync(new byte[1], token);
+                Check(eof == 0, "idle UDP association closes its control channel");
+                for (int i = 0; i < 100 && relay.ActiveConnections != 0; i++) await Task.Delay(10, token);
+                Check(relay.ActiveConnections == 0, "idle UDP association releases its admission slot");
+                Check(await tunnel.ProbeAsync(token), "UDP tunnel remains healthy after association timeout");
                 Check(!relay.TcpHealthy && relay.UdpHealthy, "transport health is independent");
                 process.Kill(); await process.WaitForExitAsync(token);
                 for (int i = 0; i < 20 && tunnel.Healthy; i++) await Task.Delay(50, token);

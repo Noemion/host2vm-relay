@@ -24,7 +24,7 @@ public static class ScriptComposer
     private const string ClosingWrapper = "  return typeof main === \"function\" ? main : null;\n})();\n\n";
     private const string VersionPrefix = "// generator-version: ";
     private const string HashPrefix = "// managed-sha256: ";
-    private const string GeneratorVersion = "0.6.0";
+    private const string GeneratorVersion = "0.6.1";
     private static readonly HashSet<string> LegacyFingerprints = new(StringComparer.Ordinal)
     {
         "b0b8a56bc87d85fe2bec2b63349965a7de3c7f00660dfa3d2a4a7412d76d138f", // 0.4.1-0.5.0

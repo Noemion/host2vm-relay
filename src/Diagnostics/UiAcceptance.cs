@@ -7,6 +7,17 @@ internal sealed class UiAcceptance
 {
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct StartupInfo
+    {
+        public uint Size;
+        public IntPtr Reserved, Desktop, Title;
+        public uint X, Y, Width, Height, XChars, YChars, Fill, Flags;
+        public ushort ShowWindow, ReservedLength;
+        public IntPtr ReservedBytes, Input, Output, Error;
+    }
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern void GetStartupInfoW(out StartupInfo info);
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll")]
@@ -52,6 +63,16 @@ internal sealed class UiAcceptance
         {
             Blocked = true;
             errors.Add($"Native acceptance requires {TargetDpi} DPI ({percent}%), but GetDpiForWindow returned {actual}. No system setting was changed and no synthetic message was sent.");
+            return false;
+        }
+        form.Activate();
+        Settle(form);
+        GetStartupInfoW(out var startup);
+        bool launchedHidden = (startup.Flags & 1) != 0 && startup.ShowWindow == 0;
+        if (launchedHidden || !Environment.UserInteractive || !form.Visible || !form.ContainsFocus)
+        {
+            Blocked = true;
+            errors.Add("Interactive desktop acceptance requires a visible window with keyboard focus. Hidden, locked or inaccessible desktops cannot certify screenshots or focus navigation.");
             return false;
         }
         return true;

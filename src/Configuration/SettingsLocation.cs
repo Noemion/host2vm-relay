@@ -59,7 +59,7 @@ public sealed class SettingsLocation
             File.Copy(path, backup, false);
         }
         AtomicWrite(path, content, replaceExisting);
-        _ = JsonSerializer.Deserialize<Settings>(File.ReadAllText(path)) ?? throw new IOException("目标配置校验失败。");
+        _ = Settings.Deserialize(File.ReadAllText(path));
         var pointer = new Pointer { Folder = target };
         AtomicWrite(PointerFile, JsonSerializer.Serialize(pointer, new JsonSerializerOptions { WriteIndented = true }), true);
         return target;

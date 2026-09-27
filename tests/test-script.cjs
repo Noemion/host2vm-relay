@@ -4,18 +4,6 @@ const vm = require('vm');
 const assert = require('assert/strict');
 const path = require('path');
 const root = path.join(__dirname, '..');
-const cs = fs.readFileSync(path.join(root, 'src/Integration/ClashScript.cs'), 'utf8');
-const template = cs.split('private const string Template = """')[1].split('""";')[0].trimStart();
-const header = '// Host2VMRelay composed script v1\n// original-length: ';
-const open = 'const __h2vmOriginalMain = (() => {\n';
-const close = '\n\n  return typeof main === "function" ? main : null;\n})();\n\n';
-function compose(source = '', port = 1080, host = '192.168.229.10') {
-  source = source || 'function main(config) { return config; }';
-  const type = host.includes(':') ? 'IP-CIDR6' : 'IP-CIDR';
-  const cidr = host + (host.includes(':') ? '/128' : '/32');
-  return header + source.length + '\n' + open + source + close + template
-    .replaceAll('__SOCKS_PORT__', String(port)).replaceAll('__VM_CIDR__', cidr).replaceAll('__VM_RULE_TYPE__', type) + '\n';
-}
 function execute(source, config) {
   const context = vm.createContext({});
   vm.runInContext(source, context, {timeout: 1000});
@@ -23,22 +11,9 @@ function execute(source, config) {
   return vm.runInContext('main(input,"test")', context, {timeout: 1000});
 }
 const base = () => ({proxies: [{name: 'old', type: 'mieru', udp: false}], rules: ['MATCH,DIRECT'], dns: {'fake-ip-filter': ['+.lan', '*.local', 'exact.example']}});
-const originals = {
-  empty: '',
-  merge: "const label = '中文 😀 __SOCKS_PORT__'; function helper(x) { return x + ':kept'; } function main(config, profileName) { config.label = helper(label); config.profile = profileName; config.rules.unshift('DOMAIN,user.example,DIRECT'); return config; }",
-  arrow: 'const main = (config, profileName) => ({ ...config, profile: profileName, arrow: true });',
-  mutating: 'function main(config) { config.mutated = true; }',
-  early: "function main(config, profileName) { if (profileName === 'test') return { ...config, early: true }; return config; }",
-  throws: "function main(config) { throw new Error('user failure'); }",
-  missing: "const example = 'function main(config) { return config; }';",
-  async: 'async function main(config) { return config; }',
-  null: 'function main(config) { return null; }',
-  array: 'function main(config) { return []; }',
-  comment: 'function main(config) { config.comment = true; return config; } // trailing comment'
-};
-const scripts = process.argv[3] ? JSON.parse(fs.readFileSync(process.argv[3], 'utf8')) : Object.fromEntries(Object.entries(originals).map(([key,value]) => [key,compose(value)]));
-scripts.regenerated ??= compose(originals.merge, 1081, 'fd00::8');
-for (const key of Object.keys(originals)) assert.equal(typeof scripts[key], 'string', 'missing generated C# fixture ' + key);
+const fixture = process.argv[3];
+assert(fixture && fs.existsSync(fixture), 'Run the C# self-test to create script-cases.json first');
+const scripts = JSON.parse(fs.readFileSync(fixture, 'utf8'));
 for (const mode of ['blacklist', 'whitelist', 'rule']) {
   const input = base(); input.dns['fake-ip-filter-mode'] = mode;
   if (mode === 'rule') input.dns['fake-ip-filter'] = ['DOMAIN,old.example,real-ip', 'MATCH,fake-ip'];
@@ -100,28 +75,10 @@ checkTun('reproduce dns-hijack-only conflict', () => {
   const discarded = Object.keys(app).filter(key => JSON.stringify(output.tun[key]) !== JSON.stringify(app[key]));
   assert.deepEqual(discarded, [], 'Settings-owned fields would be discarded by Verge');
 });
-const oldScripts = {
-  'legacy writes': `function main(c) {
-    c.tun = c.tun ?? {}; c.tun['auto-route'] = true;
-    c.tun['dns-hijack'] = [...new Set([...(c.tun['dns-hijack'] ?? []), 'any:53', 'tcp://any:53'])];
-    c.tun['route-exclude-address'] = [...new Set([...(c.tun['route-exclude-address'] ?? []), '192.168.99.10/32'])];
-    c.custom = 'preserved'; return c;
-  }`,
-  'in-place array changes': `function main(c) {
-    c.tun['dns-hijack'].push('tcp://any:53'); c.tun['route-exclude-address'].push('10.0.0.0/8');
-    c.custom = 'preserved'; return c;
-  }`,
-  'replacement tun': `function main(c) {
-    c.tun = {enable:false,stack:'system',mtu:9000,'udp-timeout':300};
-    c.custom = 'preserved'; return c;
-  }`,
-  'deleted tun': `function main(c) { delete c.tun; c.custom = 'preserved'; return c; }`,
-  'replacement config': `function main(c) { return {rules:c.rules,custom:'preserved'}; }`
-};
-for (const [name, source] of Object.entries(oldScripts)) {
+for (const name of ['legacy writes', 'in-place array changes', 'replacement tun', 'deleted tun', 'replacement config']) {
   checkTun('merged ' + name, () => {
     const input = {...base(),tun:guiTun()}, expected = ownedTun(input.tun);
-    const output = execute(compose(source), input);
+    const output = execute(scripts['tun-' + name], input);
     assert.deepEqual(ownedTun(output.tun), expected); assert.equal(output.custom, 'preserved');
     if (name === 'replacement tun') assert.equal(output.tun['udp-timeout'], 300);
   });
@@ -131,15 +88,15 @@ checkTun('absent TUN settings stay absent', () => {
 });
 checkTun('null TUN is preserved', () => { assert.equal(execute(scripts.empty, {...base(),tun:null}).tun, null); });
 checkTun('old imports cannot inject defaults into absent settings', () => {
-  const output = execute(compose(oldScripts['legacy writes']), base());
+  const output = execute(scripts['tun-legacy writes'], base());
   assert.deepEqual(ownedTun(output.tun), {}); assert.equal(output.custom, 'preserved');
 });
 checkTun('custom non-GUI TUN fields remain supported', () => {
-  const output = execute(compose("function main(c) { c.tun = {'udp-timeout':300}; return c; }"), base());
+  const output = execute(scripts['tun-custom'], base());
   assert.deepEqual(json(output.tun), {'udp-timeout':300});
 });
 checkTun('repeated merged script application is stable', () => {
-  const script = compose(oldScripts['legacy writes']);
+  const script = scripts['tun-legacy writes'];
   const output = execute(script, {...base(),tun:guiTun()}), expected = json(output);
   assert.deepEqual(json(execute(script, output)), expected);
 });
@@ -150,4 +107,4 @@ for (const name of ['host2vm-relay-rules','host2vm-relay-udp-rules']) config['ru
 const output = process.argv[2] || path.join(root,'artifacts/checks/mihomo.json');
 fs.mkdirSync(path.dirname(path.resolve(output)),{recursive:true}); fs.writeFileSync(output,JSON.stringify(config,null,2));
 console.log('PASS script composition, preserved helpers, Unicode, return modes, failure propagation, wrapper regeneration, migration, DNS, idempotence and original-policy fallback configuration');
-console.log(process.argv[3] ? 'PASS executed actual C# generator output' : 'INFO template-only checks; C# generator fixtures are exercised by Windows CI');
+console.log('PASS executed actual C# generator output for every script case');

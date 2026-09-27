@@ -1,130 +1,130 @@
-using System.Security.Cryptography;
-using Renci.SshNet;
-
 namespace Host2VMRelay;
 
 public sealed partial class MainForm
 {
     private void SaveConnection()
     {
-        if (string.IsNullOrWhiteSpace(host.Text) || string.IsNullOrWhiteSpace(user.Text)) throw new ArgumentException("请填写虚拟机地址和用户名。");
-        if (!System.Net.IPAddress.TryParse(host.Text.Trim(), out _)) throw new ArgumentException("虚拟机地址请填写 IPv4 或 IPv6 地址。");
-        if (auth.SelectedIndex == 1 && !File.Exists(keyPath.Text)) throw new ArgumentException("请选择存在的私钥文件。");
-        settings.Host = host.Text.Trim(); settings.Port = (int)port.Value; settings.User = user.Text.Trim(); settings.SocksPort = (int)socksPort.Value;
-        settings.UseKey = auth.SelectedIndex == 1; settings.KeyPath = keyPath.Text; settings.Reconnect = retry.Checked;
-        settings.EnableUdp = enableUdp.Checked; settings.RememberSecret = remember.Checked;
-        settings.ProtectedSecret = remember.Checked ? SecretStore.Protect(secret.Text) : ""; settings.Save();
+        if (string.IsNullOrWhiteSpace(host.Text) || string.IsNullOrWhiteSpace(user.Text))
+            throw new ArgumentException("请填写虚拟机地址和用户名。");
+        if (!System.Net.IPAddress.TryParse(host.Text.Trim(), out _))
+            throw new ArgumentException("虚拟机地址请填写 IPv4 或 IPv6 地址。");
+        if (auth.SelectedIndex == 1 && !File.Exists(keyPath.Text))
+            throw new ArgumentException("请选择存在的私钥文件。");
+        settings = settings.SaveUpdated(candidate =>
+        {
+            candidate.Host = host.Text.Trim();
+            candidate.Port = (int)port.Value;
+            candidate.User = user.Text.Trim();
+            candidate.SocksPort = (int)socksPort.Value;
+            candidate.UseKey = auth.SelectedIndex == 1;
+            candidate.KeyPath = keyPath.Text;
+            candidate.Reconnect = retry.Checked;
+            candidate.EnableUdp = enableUdp.Checked;
+            candidate.RememberSecret = remember.Checked;
+            candidate.ProtectedSecret = remember.Checked ? SecretStore.Protect(secret.Text) : "";
+        });
     }
+
     private async Task Connect(bool automatic = false)
     {
         if (busy || polling) return;
-        try { SaveConnection(); } catch (Exception ex) { if (!automatic) Error(ex); wanted = false; return; }
-        busy = true; wanted = true; SetConnectionControls(true);
-        state.Text = "● 正在连接…"; state.ForeColor = Color.DarkOrange;
-        string password = secret.Text, endpoint = settings.Host + ":" + settings.Port;
+        try { SaveConnection(); }
+        catch (Exception ex) { if (!automatic) Error(ex); wanted = false; return; }
+        busy = true;
+        wanted = true;
+        SetConnectionControls(true);
+        state.Text = "● 正在连接…";
+        state.ForeColor = Color.DarkOrange;
+        string endpoint = settings.Host + ":" + settings.Port;
+        var options = new RelayConnectionOptions(settings.Host, settings.Port, settings.User,
+            settings.SocksPort, settings.UseKey, settings.KeyPath, secret.Text, settings.EnableUdp);
         try
         {
-            Cleanup(); TryDisableRules();
-            await Task.Run(() =>
+            Cleanup();
+            TryDisableRules();
+            var connected = await RelaySession.OpenAsync(options, fingerprint =>
             {
-                AuthenticationMethod method;
-                if (settings.UseKey)
+                var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                BeginInvoke(() =>
                 {
-                    keyFile = string.IsNullOrEmpty(password) ? new PrivateKeyFile(settings.KeyPath) : new PrivateKeyFile(settings.KeyPath, password);
-                    method = new PrivateKeyAuthenticationMethod(settings.User, keyFile);
-                }
-                else method = new PasswordAuthenticationMethod(settings.User, password);
-                client = new SshClient(new ConnectionInfo(settings.Host, settings.Port, settings.User, method) { Timeout = TimeSpan.FromSeconds(12) });
-                client.KeepAliveInterval = TimeSpan.FromSeconds(5);
-                client.HostKeyReceived += (_, e) =>
-                {
-                    string fingerprint = "SHA256:" + Convert.ToBase64String(SHA256.HashData(e.HostKey)).TrimEnd('='); bool accepted = false;
-                    Invoke(() =>
+                    try
                     {
+                        if (formLifetime.IsCancellationRequested) { decision.TrySetCanceled(); return; }
+                        bool accepted = false;
                         if (settings.HostKeys.TryGetValue(endpoint, out var known))
                         {
                             accepted = known == fingerprint;
                             if (!accepted) { wanted = false; Log("服务器指纹变化，已拒绝连接：" + endpoint); }
                         }
-                        else if (!automatic && MessageBox.Show(this, "首次连接 " + endpoint + "\n服务器指纹：\n" + fingerprint + "\n\n请与虚拟机核对。是否信任并保存？", "确认 SSH 服务器", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-                        { settings.HostKeys[endpoint] = fingerprint; settings.Save(); accepted = true; }
+                        else if (!automatic && MessageBox.Show(this, "首次连接 " + endpoint + "\n服务器指纹：\n" + fingerprint +
+                            "\n\n请与虚拟机核对。是否信任并保存？", "确认 SSH 服务器", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                        {
+                            settings = settings.SaveUpdated(candidate => candidate.HostKeys[endpoint] = fingerprint);
+                            accepted = true;
+                        }
                         else wanted = false;
-                    });
-                    e.CanTrust = accepted;
-                };
-                client.ErrorOccurred += (_, e) => Log("SSH：" + e.Exception.Message);
-                client.Connect();
-                forward = new ForwardedPortDynamic("127.0.0.1", 0);
-                forward.Exception += (_, e) => Log("TCP：" + e.Exception.Message);
-                client.AddForwardedPort(forward); forward.Start();
-                relay = new RelaySocksServer(settings.SocksPort);
-                relay.SetUpstream((int)forward.BoundPort, null);
-            });
-            await StartUdpAsync();
-            relay!.SetUpstream((int)forward!.BoundPort, udpTunnel);
-            ApplyRouteFiles(); PresentPath();
+                        decision.TrySetResult(accepted);
+                    }
+                    catch (Exception ex) { decision.TrySetException(ex); }
+                });
+                // Cancellation must release the SSH callback even when the UI is closing.
+                return decision.Task.WaitAsync(formLifetime.Token).GetAwaiter().GetResult();
+            }, Log, formLifetime.Token);
+            if (!wanted || IsDisposed) { connected.Dispose(); return; }
+            session = connected;
+            ApplyRouteFiles();
+            PresentPath();
             Log("中继已连接：127.0.0.1:" + settings.SocksPort + " → " + endpoint);
         }
         catch (Exception ex)
         {
-            Cleanup(); TryDisableRules(); PresentPath(ex.Message); Log("连接失败：" + ex.Message);
+            Cleanup();
+            if (IsDisposed || formLifetime.IsCancellationRequested) return;
+            TryDisableRules();
+            PresentPath(ex.Message);
+            Log("连接失败：" + ex.Message);
         }
-        finally { busy = false; nextRetry = DateTime.UtcNow.AddSeconds(15); SetConnectionControls(client?.IsConnected == true); }
-    }
-    private bool udpStarting;
-    private async Task StartUdpAsync()
-    {
-        var active = client;
-        if (udpStarting || !settings.EnableUdp || active?.IsConnected != true) return;
-        udpStarting = true;
-        try
+        finally
         {
-            var tunnel = await UdpTunnel.StartAsync(active);
-            if (!ReferenceEquals(client, active) || !wanted) { tunnel.Dispose(); return; }
-            udpTunnel?.Dispose(); udpTunnel = tunnel;
-            if (relay is not null && forward?.IsStarted == true)
-                relay.SetUpstream((int)forward.BoundPort, tunnel);
+            busy = false;
+            nextRetry = DateTime.UtcNow.AddSeconds(15);
+            if (!IsDisposed) SetConnectionControls(session?.IsConnected == true);
         }
-        catch (Exception ex)
-        {
-            if (ReferenceEquals(client, active)) Log("WARNING UDP 组件不可用，UDP 将使用宿主机原有分流：" + ex.Message);
-        }
-        finally { udpStarting = false; nextUdpRetry = DateTime.UtcNow.AddSeconds(15); }
     }
+
     private async Task PollNetworkAsync()
     {
         if (busy || polling || !wanted) return;
-        if (client?.IsConnected != true || forward?.IsStarted != true || relay is null)
+        if (session?.IsConnected != true)
         {
-            Cleanup(); TryDisableRules(); PresentPath("虚拟机不可用"); SetConnectionControls(false);
+            Cleanup();
+            TryDisableRules();
+            PresentPath("虚拟机不可用");
+            SetConnectionControls(false);
             if (retry.Checked && DateTime.UtcNow >= nextRetry) await Connect(true);
             return;
         }
-        polling = true; var active = client;
+        polling = true;
+        var active = session;
         try
         {
-            bool alive = await Task.Run(() =>
-            {
-                try { using var probe = active.CreateCommand("printf h2vm-alive"); probe.CommandTimeout = TimeSpan.FromSeconds(3); return probe.Execute() == "h2vm-alive"; }
-                catch { return false; }
-            });
-            if (!ReferenceEquals(client, active) || !wanted) return;
+            bool alive = await active.RefreshAsync(retry.Checked);
+            // Disconnect or form closure invalidates all in-flight state publications.
+            if (!ReferenceEquals(session, active) || !wanted || IsDisposed) return;
             if (!alive)
             {
-                Cleanup(); TryDisableRules(); PresentPath("SSH 健康检查失败"); SetConnectionControls(false); return;
+                Cleanup();
+                TryDisableRules();
+                PresentPath("SSH 健康检查失败");
+                SetConnectionControls(false);
+                return;
             }
-            relay?.SetUpstream((int)forward!.BoundPort, udpTunnel);
-            var testedUdp = udpTunnel;
-            if (testedUdp is not null && !await testedUdp.ProbeAsync() && ReferenceEquals(udpTunnel, testedUdp))
-            { testedUdp.Dispose(); udpTunnel = null; nextUdpRetry = DateTime.UtcNow.AddSeconds(15); }
-            if (!ReferenceEquals(client, active) || !wanted) return;
-            if (settings.EnableUdp && udpTunnel is null && retry.Checked && DateTime.UtcNow >= nextUdpRetry) _ = StartUdpAsync();
-            if (!ReferenceEquals(client, active) || relay is null || forward is null) return;
-            relay.SetUpstream((int)forward.BoundPort, udpTunnel);
-            ApplyRouteFiles(); PresentPath();
+            ApplyRouteFiles();
+            PresentPath();
         }
         catch (Exception ex)
         {
+            if (!ReferenceEquals(session, active) || IsDisposed) return;
             TryDisableRules();
             feed.Text = "规则同步失败，未确认切换；请查看运行日志。";
             Log("WARNING 状态同步失败：" + ex.Message);
@@ -133,14 +133,14 @@ public sealed partial class MainForm
     }
     private void ApplyRouteFiles()
     {
-        bool tcp = relay?.TcpHealthy == true, udp = relay?.UdpHealthy == true && settings.EnableUdp;
+        bool tcp = session?.Health.Tcp == true, udp = session?.Health.Udp == true && settings.EnableUdp;
         string payload = tcp || udp ? Rules.Compile(settings.Rules) : ClashRuleFile.DisabledPayload;
         ClashRuleFile.Write(tcp ? payload : ClashRuleFile.DisabledPayload);
         ClashRuleFile.WriteUdp(udp ? payload : ClashRuleFile.DisabledPayload);
     }
     private void PresentPath(string? reason = null)
     {
-        bool tcp = relay?.TcpHealthy == true, udp = relay?.UdpHealthy == true && settings.EnableUdp;
+        bool tcp = session?.Health.Tcp == true, udp = session?.Health.Udp == true && settings.EnableUdp;
         string key = tcp ? (udp ? "both" : settings.EnableUdp ? "tcp-only" : "tcp") : "host";
         state.Text = tcp ? udp ? "● TCP + UDP" : "● TCP 已连接" : "● 宿主机路径";
         state.ForeColor = key is "host" or "tcp-only" ? Color.DarkOrange : Color.SeaGreen;
@@ -160,11 +160,8 @@ public sealed partial class MainForm
     }
     private void Cleanup()
     {
-        try { relay?.Dispose(); } catch { } relay = null;
-        try { udpTunnel?.Dispose(); } catch { } udpTunnel = null;
-        try { forward?.Dispose(); } catch { } forward = null;
-        try { client?.Dispose(); } catch { } client = null;
-        keyFile?.Dispose(); keyFile = null;
+        session?.Dispose();
+        session = null;
     }
     private void SetConnectionControls(bool connected)
     {

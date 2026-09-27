@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.1 — Transport reliability and maintainability
+
+- 修复 TCP 单方向异常后另一方向等待造成的连接槽位泄漏，保留正常半关闭响应。
+- 修复 UDP 单向收流仍在空闲期限后断开；DNS 改为有界后台解析，慢解析不再阻塞其他流量和探测。
+- 配置修改先持久化候选值再发布，保存失败不再使未保存规则或信任信息进入活动状态。
+- 提取可取消的 RelaySession，生产界面和 SSH 验收复用会话健康与 UDP 恢复逻辑；补充异常回归与生命周期说明。
+- UI 验收在不可交互桌面明确报告 BLOCKED。
+
+
 ## 0.6.0 — Transparent UDP, recovery and compact controls
 
 - Add bounded SOCKS5 UDP associations over a session-scoped SSH/Python bridge; retain the original TCP forwarding path.

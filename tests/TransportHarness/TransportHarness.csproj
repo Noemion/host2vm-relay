@@ -7,8 +7,10 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="SSH.NET" Version="2026.0.0" />
+    <Compile Include="../../src/Networking/RelaySession.cs" Link="RelaySession.cs" />
     <Compile Include="../../src/Networking/UdpTunnel.cs" Link="UdpTunnel.cs" />
     <Compile Include="../../src/Networking/RelaySocksServer.cs" Link="RelaySocksServer.cs" />
+    <Compile Include="../../src/Networking/DuplexRelay.cs" Link="DuplexRelay.cs" />
     <Compile Include="../../src/Integration/ClashScript.cs" Link="ClashScript.cs" />
     <Compile Include="../../src/Integration/ScriptComposer.cs" Link="ScriptComposer.cs" />
     <EmbeddedResource Include="../../src/Networking/udp_bridge.py" LogicalName="Host2VMRelay.UdpBridge" />

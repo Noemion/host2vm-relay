@@ -36,7 +36,7 @@ public sealed partial class MainForm
         UiLayout.Add(page, UiLayout.Help("配置目录定位文件仅保存路径，位于 LocalAppData/Host2VMRelay/storage.json。Clash 的规则文件仍位于 Clash 数据目录，不随本配置迁移。"));
         bool CanMoveProfile()
         {
-            if (!busy && !wanted && client?.IsConnected != true) return true;
+            if (!busy && !wanted && session?.IsConnected != true) return true;
             MessageBox.Show(this, "请先断开隧道，再更改配置目录。", "配置存储", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return false;
         }

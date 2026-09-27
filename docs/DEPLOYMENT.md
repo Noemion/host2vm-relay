@@ -2,7 +2,7 @@
 
 ## Windows 客户端
 
-运行 `Host2VMRelay-0.6.0-win-universal-Setup.exe`。安装器携带 x64、x86、ARM64 三套程序并按系统选择；便携 ZIP 则按架构分别提供。应用依赖和 .NET 桌面运行时以 self-contained single-file 方式包含在 EXE 内，使用者无需编译，也无需在 Windows 安装 Python 或 Node.js。不是可脱离 Windows 的完全静态原生程序；临时目录需要可写。程序和安装包目前未签名。
+运行 `Host2VMRelay-0.6.1-win-universal-Setup.exe`。安装器携带 x64、x86、ARM64 三套程序并按系统选择；便携 ZIP 则按架构分别提供。应用依赖和 .NET 桌面运行时以 self-contained single-file 方式包含在 EXE 内，使用者无需编译，也无需在 Windows 安装 Python 或 Node.js。不是可脱离 Windows 的完全静态原生程序；临时目录需要可写。程序和安装包目前未签名。
 
 安装器使用当前用户权限。升级前从托盘退出旧程序；检测到同一用户的旧安装时先卸载后安装，保留配置文件和目录定位信息。Setup 的文件名明确标注 universal，不能把它误认为单个 AnyCPU 原生二进制。
 
@@ -22,7 +22,7 @@ Clash 的两个规则文件仍在 Clash 自身的数据目录下，不随应用�
 
 ## 版本升级
 
-从 v0.5.0 或更早版本升级到 v0.6.0 后，必须使用“合并已有脚本”导入旧版完整脚本，复制生成结果到 Clash 并应用。这样才会接入 UDP 节点、按协议的规则和健康回退组。只更换 EXE 无法更新此前粘贴的 JavaScript。
+从 v0.5.0 或更早版本升级到 v0.6.x 后，必须使用“合并已有脚本”导入旧版完整脚本，复制生成结果到 Clash 并应用。这样才会接入 UDP 节点、按协议的规则和健康回退组。只更换 EXE 无法更新此前粘贴的 JavaScript。
 
 ## 本地构建与发布
 

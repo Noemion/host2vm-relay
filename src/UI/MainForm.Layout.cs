@@ -31,7 +31,7 @@ public sealed partial class MainForm
         var keyField = UiLayout.Field("私钥文件", keys, frame: false);
         auth.SelectedIndexChanged += (_, _) =>
         {
-            keyField.Visible = auth.SelectedIndex == 1; keys.Enabled = auth.SelectedIndex == 1 && !busy && client?.IsConnected != true;
+            keyField.Visible = auth.SelectedIndex == 1; keys.Enabled = auth.SelectedIndex == 1 && !busy && session?.IsConnected != true;
             passwordField.Controls.OfType<Label>().First().Text = auth.SelectedIndex == 1 ? "私钥口令（没有可留空）" : "密码";
             secret.AccessibleName = auth.SelectedIndex == 1 ? "私钥口令" : "密码";
         };
@@ -71,8 +71,17 @@ public sealed partial class MainForm
             try
             {
                 _ = Rules.Compile(ruleText.Text);
-                settings.Rules = ruleText.Text.Replace("\r", ""); settings.Save(); ApplyRouteFiles();
-                UpdateSummary(); Log("规则已保存；Clash 将重新读取本地规则文件。");
+                settings = settings.SaveUpdated(candidate => candidate.Rules = ruleText.Text.Replace("\r", ""));
+                UpdateSummary();
+                try
+                {
+                    ApplyRouteFiles();
+                    Log("规则已保存；Clash 将重新读取本地规则文件。");
+                }
+                catch (Exception ex)
+                {
+                    Error(new IOException("规则已保存，但同步到 Clash 失败；连接期间将自动重试。", ex));
+                }
             }
             catch (Exception ex) { Error(ex); }
         };
@@ -135,7 +144,8 @@ public sealed partial class MainForm
             {
                 if (!Uri.TryCreate(testUrl.Text.Trim(), UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https") || !string.IsNullOrEmpty(uri.UserInfo))
                     throw new ArgumentException("请填写 HTTP 或 HTTPS 网址，不要在网址中包含用户名和密码。");
-                settings.TestUrl = uri.AbsoluteUri; settings.Save(); testResult.Text = "正在通过隧道测试…";
+                settings = settings.SaveUpdated(candidate => candidate.TestUrl = uri.AbsoluteUri);
+                testResult.Text = "正在通过隧道测试…";
                 using var handler = new SocketsHttpHandler { Proxy = new System.Net.WebProxy("socks5://127.0.0.1:" + socksPort.Value), UseProxy = true, AllowAutoRedirect = false };
                 using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
                 using var response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead);

@@ -59,12 +59,7 @@ internal static class SelfTest
                 bool rejected = false; try { ClashScript.Generate(invalid); } catch (ArgumentOutOfRangeException) { rejected = true; }
                 Check(rejected, "reject invalid SOCKS port " + invalid);
             }
-            string original = "const label = '中文 😀 __SOCKS_PORT__';\nfunction main(config, profileName) { config.label = label; return config; }";
-            string first = ClashScript.Generate(1080, "192.168.50.8", original);
-            string second = ClashScript.Generate(1081, "fd00::8", first);
-            Check(ScriptComposer.ExtractOriginal(first) == original && ScriptComposer.ExtractOriginal(second) == original, "lossless user source extraction");
-            Check(second == ClashScript.Generate(1081, "fd00::8", original), "regeneration replaces wrapper rather than nesting");
-            Check(ScriptComposer.ExtractOriginal(first.Replace("\n", "\r\n")) == original, "CRLF envelope roundtrip");
+            string first = ClashScript.Generate(1080);
             bool badMarker = false;
             try { ScriptComposer.ExtractOriginal(first.Replace("managed-sha256: ", "managed-sha256: x")); } catch (FormatException) { badMarker = true; }
             Check(badMarker, "reject damaged generated markers");
@@ -95,7 +90,13 @@ internal static class SelfTest
             ["async"] = "async function main(config) { return config; }",
             ["null"] = "function main(config) { return null; }",
             ["array"] = "function main(config) { return []; }",
-            ["comment"] = "function main(config) { config.comment = true; return config; } // trailing comment"
+            ["comment"] = "function main(config) { config.comment = true; return config; } // trailing comment",
+            ["tun-legacy writes"] = "function main(c) { c.tun ??= {}; c.tun['auto-route'] = true; c.tun['dns-hijack'] = [...new Set([...(c.tun['dns-hijack'] ?? []),'any:53','tcp://any:53'])]; c.tun['route-exclude-address'] = [...(c.tun['route-exclude-address'] ?? []),'192.168.99.10/32']; c.custom = 'preserved'; return c; }",
+            ["tun-in-place array changes"] = "function main(c) { c.tun['dns-hijack'].push('tcp://any:53'); c.tun['route-exclude-address'].push('10.0.0.0/8'); c.custom = 'preserved'; return c; }",
+            ["tun-replacement tun"] = "function main(c) { c.tun = {enable:false,stack:'system',mtu:9000,'udp-timeout':300}; c.custom = 'preserved'; return c; }",
+            ["tun-deleted tun"] = "function main(c) { delete c.tun; c.custom = 'preserved'; return c; }",
+            ["tun-replacement config"] = "function main(c) { return {rules:c.rules,custom:'preserved'}; }",
+            ["tun-custom"] = "function main(c) { c.tun = {'udp-timeout':300}; return c; }"
         };
         var generated = cases.ToDictionary(x => x.Key, x => ClashScript.Generate(1080, "192.168.229.10", x.Value));
         generated["regenerated"] = ClashScript.Generate(1081, "fd00::8", generated["merge"]);

@@ -99,12 +99,18 @@ internal sealed class UdpTunnel : IDisposable
         do { id = BinaryPrimitives.ReadUInt32BigEndian(RandomNumberGenerator.GetBytes(4)); } while (!probes.TryAdd(id, (nonce, promise)));
         try
         {
-            if (!Queue((byte)'P', id, nonce)) return false;
+            if (!Queue((byte)'P', id, nonce))
+            {
+                LastError = "UDP 探测无法入队：通道已关闭或队列已满。";
+                return false;
+            }
             bool ok = await promise.Task.WaitAsync(TimeSpan.FromSeconds(3), token).ConfigureAwait(false);
             if (ok) Interlocked.Exchange(ref lastProbe, Environment.TickCount64);
             return ok;
         }
-        catch (Exception ex) when (ex is TimeoutException or OperationCanceledException or IOException) { return false; }
+        catch (TimeoutException) { LastError = "UDP 健康探测超过三秒未收到响应。"; return false; }
+        catch (OperationCanceledException) { return false; }
+        catch (IOException ex) { LastError = ex.Message; return false; }
         finally { probes.TryRemove(id, out _); }
     }
     private void ReadLoop()

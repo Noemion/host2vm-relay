@@ -1,20 +1,13 @@
-using System.Security.Cryptography;
-using Renci.SshNet;
-
 namespace Host2VMRelay;
 
 public sealed partial class MainForm : Form
 {
-    private readonly Settings settings;
-    private SshClient? client;
-    private ForwardedPortDynamic? forward;
-    private RelaySocksServer? relay;
-    private UdpTunnel? udpTunnel;
+    private Settings settings;
+    private RelaySession? session;
+    private readonly CancellationTokenSource formLifetime = new();
     private bool polling;
     private string lastPath = "";
-    private DateTime nextUdpRetry;
     private readonly CheckBox enableUdp = new() { Text = "透明转发 UDP", AutoSize = true };
-    private PrivateKeyFile? keyFile;
     private readonly TextBox host = new(), user = new(), secret = new(), keyPath = new(), ruleText = new(), log = new();
     private readonly NumericUpDown port = new() { Minimum = 1, Maximum = 65535 }, socksPort = new() { Minimum = 1024, Maximum = 65535 };
     private readonly ComboBox auth = new() { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -50,7 +43,7 @@ public sealed partial class MainForm : Form
         catch (Exception ex) { Log("无法初始化 Clash 本地规则文件：" + ex.Message); }
         var menu = new ContextMenuStrip { Font = Font };
         menu.Items.Add("打开主窗口", null, (_, _) => Restore());
-        menu.Items.Add("连接", null, async (_, _) => { if (!busy && client?.IsConnected != true) await Connect(); });
+        menu.Items.Add("连接", null, async (_, _) => { if (!busy && session?.IsConnected != true) await Connect(); });
         menu.Items.Add("断开", null, (_, _) => Stop());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) =>
@@ -70,7 +63,7 @@ public sealed partial class MainForm : Form
         };
         FormClosed += (_, _) =>
         {
-            wanted = false; timer.Stop(); Cleanup(); TryDisableRules();
+            wanted = false; formLifetime.Cancel(); timer.Stop(); Cleanup(); TryDisableRules();
             tray.Dispose(); menu.Dispose(); timer.Dispose(); windowIcon?.Dispose(); trayIcon?.Dispose();
         };
         timer.Tick += async (_, _) => await PollNetworkAsync();

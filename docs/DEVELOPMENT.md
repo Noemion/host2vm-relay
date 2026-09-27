@@ -22,7 +22,7 @@ dotnet run --project tests/TransportHarness/TransportHarness.csproj -c Release -
 
 ## 模块
 
-`MainForm.Networking.cs` 负责认证、主机指纹、探活、恢复和路径提示。`RelaySocksServer` 提供仅监听 loopback 的 SOCKS5 入口；TCP 交给 SSH.NET 动态转发，UDP 交给 `UdpTunnel`。后者以带边界和会话编号的帧经 SSH exec 的 stdin/stdout 与嵌入 Python 组件通信。Python 端使用普通 UDP 套接字，队列、会话数、最大帧和空闲时间均有限制。健康 URI 由本机入口处理，绝不访问公网 `.invalid` 域名。
+`MainForm.Networking.cs` 负责界面输入、主机指纹确认、用户重连意图和路径提示。`RelaySession` 独立拥有 SSH、TCP 转发、UDP 启动/恢复和取消生命周期；Linux TransportHarness 复用同一会话服务。连接参数是快照，停止后的旧异步结果不能重新发布到界面。`RelaySocksServer` 提供仅监听 loopback 的 SOCKS5 入口；TCP 交给 SSH.NET 动态转发，UDP 交给 `UdpTunnel`。后者以带边界和会话编号的帧经 SSH exec 的 stdin/stdout 与嵌入 Python 组件通信。Python 端使用普通 UDP 套接字，队列、会话数、最大帧和空闲时间均有限制。健康 URI 由本机入口处理，绝不访问公网 `.invalid` 域名。
 
 `ClashScript` 保留原配置后加入 TCP/UDP 分组。不可用时选择 PASS，让原规则继续匹配。PASS 必须是 fallback 组第一个成员：它的专用探测失败，可用中继获选；所有成员失败时第一个 PASS 才能让原有策略接管。不要改成 DIRECT、REJECT 或把数组次序倒过来。
 
@@ -39,3 +39,15 @@ dotnet run --project tests/TransportHarness/TransportHarness.csproj -c Release -
 Linux 网络验收必须运行在可销毁、有 root 权限的 CI 测试机：`sudo python3 tests/test-transparent-network.py`。它创建隔离命名空间、临时 SSH 密钥、真实 TUN 与 UDP/TCP 服务；密钥不写入上传目录。普通客户端不包含代理配置，两个路径用不同返回值证实；结束后清理命名空间和夹具。Mihomo 来自固定发行版本，并校验发行 API 给出的 SHA-256。不要在日常生产主机运行这个网络测试。
 
 更新 csproj、安装器默认版本、manifest 和 RELEASE_NOTES 后推送 main。只有 Windows 和 network 两个任务成功才能发布。已有正式 Release 不替换附件。物理 DPI、多显示器、真实 Windows TUN 和公司业务协议验收范围需明确记录，不能用构建成功代替。
+
+## 异常处理契约
+
+- `DuplexRelay` 等待两个复制任务结束。正常 EOF 仅关闭目标写端，允许反向响应继续；异常或取消则关闭两个套接字并取消另一任务，之后才释放 SOCKS 准入槽位。
+- UDP association 的两分钟空闲时间由两个方向成功传输共同刷新。DNS 等待、无效包和队列拒绝不算成功传输。测试注入一秒空闲时间，用真实 socket 验证持续下行与真正空闲的区别。
+- Python DNS 使用四个 daemon worker、32 个排队请求、最多 32 个待解析目标、每目标八个数据报；逻辑超时两秒，成功结果缓存 60 秒，最多 128 项。系统 getaddrinfo 本身不可强制取消，超时/关闭后的结果不再投递；即使 worker 阻塞，也不阻塞数字 IP、已有会话和健康探测。UDP 过载允许丢包，不增长无界队列。
+- `Settings.SaveUpdated` 复制候选配置及 HostKeys，先原子写入，再由调用方替换活动引用；失败时内存和磁盘保持原值。规则保存与 Clash 同步失败分别报告。新增可变引用字段时必须同步扩展候选复制逻辑。
+- SSH 连接使用可取消的 ConnectAsync。会话停止会取消 UDP 启动/探测，并停用监听器。刷新操作串行化；后台 UDP 重建不阻塞 TCP 的九秒健康租约。UI 每三秒刷新，UDP 探测最多三秒、健康有效期七秒，重试间隔十五秒。修改这些时间窗口时要一起验证最坏耗时和回退延迟。
+
+本机故障回归：`dotnet run --project tests/TransportHarness/TransportHarness.csproj -c Release -- --local-check artifacts/checks/windows-transport.json`，包含 TCP 两侧 reset、半关闭延迟响应、资源回收、SSH 启动取消、UDP 单向推送及空闲关闭。`python tests/test-udp-helper.py` 额外覆盖慢 DNS、超时结果丢弃、关闭后的解析结果、缓存与退出。
+
+UI 验收需要可见且能获得焦点的交互桌面。隐藏窗口、锁屏或不可访问桌面报告 BLOCKED，不能将这种执行当作 DPI/截图通过；保留原生 DPI 与消息注入验收的区别。
