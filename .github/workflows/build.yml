@@ -9,9 +9,37 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  windows:
-    runs-on: windows-latest
+  native:
+    runs-on: ubuntu-latest
     timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build and check static Rust VM agents and SSH worker
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy
+          rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+          cargo fmt --manifest-path native/Cargo.toml --all -- --check
+          cargo clippy --manifest-path native/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path native/Cargo.toml --locked
+          bash scripts/build-native-linux.sh --with-core
+          sudo apt-get update -qq
+          sudo apt-get install -y openssh-server qemu-user
+          sudo python3 tests/test-rust-engine.py
+          python3 tests/test-native-agent.py artifacts/native/agents/h2vm-agent-linux-x64
+          python3 tests/test-native-agent.py artifacts/native/agents/h2vm-agent-linux-arm64 --runner qemu-aarch64
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Host2VMRelay-native
+          path: artifacts/native/
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: Host2VMRelay-rust-checks
+          path: artifacts/checks/rust/
+  windows:
+    needs: native
+    runs-on: windows-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Retain the exact source used by this build
@@ -28,16 +56,26 @@ jobs:
         with:
           node-version: '22'
           package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Host2VMRelay-native
+          path: artifacts/native
+      - name: Build Windows Rust workers
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup target add x86_64-pc-windows-msvc i686-pc-windows-msvc aarch64-pc-windows-msvc
+          .\scripts\build-native.ps1
       - name: Build and check scripts, icons and scaled layouts
         shell: pwsh
         run: .\build.ps1 -Test
       - name: Check native Windows transport and session lifecycle
         shell: pwsh
         run: dotnet run --project tests/TransportHarness/TransportHarness.csproj -c Release -- --local-check artifacts/checks/windows-transport.json
-      - name: Check Windows UDP helper DNS isolation
+      - name: Check Windows Rust UDP helper protocol
         shell: pwsh
         run: |
-          python tests/test-udp-helper.py
+          python tests/test-native-agent.py artifacts/native/tests/h2vm-agent.exe
           if ($LASTEXITCODE -ne 0) { throw 'UDP helper regression checks failed' }
       - name: Upload check results and layout screenshots
         if: always()
@@ -90,6 +128,7 @@ jobs:
           path: artifacts/release/
           if-no-files-found: error
   network:
+    needs: native
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -97,12 +136,18 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Host2VMRelay-native
+          path: artifacts/native
+      - name: Restore native executable permissions
+        run: chmod +x artifacts/native/linux-x64/h2vm-core artifacts/native/linux-x64/h2vm-agent-linux-*
       - name: Build production transport integration harness
         run: dotnet build tests/TransportHarness/TransportHarness.csproj -c Release
       - name: Check Linux transport lifecycle
         run: dotnet run --project tests/TransportHarness/TransportHarness.csproj -c Release --no-build -- --local-check artifacts/checks/network/local-transport.json
       - name: Test UDP bridge protocol and real sockets
-        run: python3 tests/test-udp-helper.py
+        run: python3 tests/test-native-agent.py artifacts/native/linux-x64/h2vm-agent-linux-x64
       - name: Test transparent TUN, SSH and automatic host fallback
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -118,10 +118,13 @@ def setup():
     run('ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', TMP / 'hostkey')
     run('ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', TMP / 'clientkey')
     auth = TMP / 'authorized_keys'; shutil.copyfile(TMP / 'clientkey.pub', auth); auth.chmod(0o644)
-    (TMP / 'bin').mkdir(); python = TMP / 'bin/python3'
-    python.write_text('#!/bin/sh\n[ ! -e "' + str(TMP / 'block-udp') + '" ] || exit 7\nexec /usr/bin/python3 "$@"\n'); python.chmod(0o755)
+    home = TMP / 'home'; home.mkdir()
+    run('usermod', '-d', home, 'h2vmtest'); run('chown', 'h2vmtest', home)
+    shell = TMP / 'session-shell'
+    shell.write_text('#!/bin/sh\nif [ -e "' + str(TMP / 'block-udp') + '" ]; then\ncase "$SSH_ORIGINAL_COMMAND" in *host2vm-relay*) exit 7;; esac\nfi\nexec /bin/sh -c "$SSH_ORIGINAL_COMMAND"\n')
+    shell.chmod(0o755)
     cfg = TMP / 'sshd_config'
-    cfg.write_text(f'Port 2222\nListenAddress 10.203.0.20\nHostKey {TMP}/hostkey\nPidFile {TMP}/sshd.pid\nAuthorizedKeysFile {auth}\nStrictModes no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nUsePAM no\nAllowUsers h2vmtest\nAllowTcpForwarding yes\nSetEnv PATH={TMP}/bin:/usr/bin:/bin\n')
+    cfg.write_text(f'Port 2222\nListenAddress 10.203.0.20\nHostKey {TMP}/hostkey\nPidFile {TMP}/sshd.pid\nAuthorizedKeysFile {auth}\nStrictModes no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nUsePAM no\nAllowUsers h2vmtest\nAllowTcpForwarding yes\nForceCommand {shell}\n')
     Path('/run/sshd').mkdir(exist_ok=True)
     start(['ip', 'netns', 'exec', VM, '/usr/sbin/sshd', '-D', '-e', '-f', cfg], 'sshd.log')
     fingerprint = run('ssh-keygen', '-lf', TMP / 'hostkey.pub', '-E', 'sha256').stdout.split()[1]
@@ -162,7 +165,7 @@ def tests():
     (TMP / 'block-udp').touch()
     for pid in run('ip', 'netns', 'pids', VM).stdout.split():
         try:
-            if b'base64.b64decode' in Path('/proc/' + pid + '/cmdline').read_bytes(): os.kill(int(pid), signal.SIGTERM)
+            if b'/host2vm-relay/' in Path('/proc/' + pid + '/cmdline').read_bytes() and b'/agent' in Path('/proc/' + pid + '/cmdline').read_bytes(): os.kill(int(pid), signal.SIGTERM)
         except ProcessLookupError: pass
     expect_path('udp', 'HOST:probe'); expect_path('tcp', 'VM')
     record('UDP-only failure falls back to original host policy without breaking VM TCP')

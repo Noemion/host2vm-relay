@@ -6,7 +6,7 @@
 
 安装包按 x64、x86 和 ARM64 分别提供。安装版需要对应架构的 [.NET 8 桌面运行时](https://dotnet.microsoft.com/download/dotnet/8.0)，安装器会在卸载旧版前检查依赖。便携包仍包含运行时，无需另装 .NET。Windows 客户端均不需要 Python、Node.js 或编译器。正式版本见 [Releases](https://github.com/Noemion/host2vm-relay/releases/latest)。
 
-Windows 使用 Clash Verge Rev／Mihomo TUN。虚拟机需要 Linux／兼容 POSIX shell 的 SSH 服务、允许命令执行和 TCP 转发，并能够访问目标网络。UDP 功能还需要虚拟机 `python3`；程序会复用已校验的 SSH 会话启动内存中的标准库组件，不安装服务、不使用 root、不额外开放 VM 监听端口。
+Windows 使用 Clash Verge Rev／Mihomo TUN。虚拟机支持 Linux x86_64 和 aarch64，需要 SSH 服务、允许命令执行和 TCP 转发，并能够访问目标网络。客户端使用 Rust 异步 SSH 内核。UDP 辅助程序随软件提供，连接时自动识别架构、上传、校验并启动；无需安装 Python、Rust 或 .NET，不安装系统服务、不使用 root、不额外开放虚拟机监听端口。
 
 ## 快速使用
 

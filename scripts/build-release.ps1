@@ -51,7 +51,7 @@ Copy-Item -LiteralPath (Join-Path $repoRoot 'docs') -Destination $common -Recurs
 foreach ($doc in @('README.md','CHANGELOG.md')) { Copy-Item -LiteralPath (Join-Path $repoRoot $doc) -Destination $common -Force }
 foreach ($rid in @('win-x64','win-x86','win-arm64')) {
     $archive = Join-Path $releaseRoot "Host2VMRelay-$version-$rid-Portable.zip"
-    Compress-Archive -Path (Join-Path $publishRoot "$rid\Host2VMRelay.exe"), (Join-Path $common '*') -DestinationPath $archive -Force
+    Compress-Archive -Path (Join-Path $publishRoot "$rid\Host2VMRelay.exe"), (Join-Path $publishRoot "$rid\native"), (Join-Path $common '*') -DestinationPath $archive -Force
     $releaseFiles += $archive
 }
 if (!$SkipInstaller) {

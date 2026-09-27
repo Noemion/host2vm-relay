@@ -7,7 +7,7 @@ using System.Threading.Channels;
 
 namespace Host2VMRelay;
 
-/// <summary>Loopback SOCKS5 endpoint. TCP uses SSH.NET; UDP uses the session-scoped bridge.</summary>
+/// <summary>Loopback SOCKS5 endpoint. TCP uses the Rust SSH worker; UDP uses the session-scoped bridge.</summary>
 internal sealed class RelaySocksServer : IDisposable
 {
     public const string HealthHost = "health.host2vm-relay.invalid";
@@ -29,6 +29,7 @@ internal sealed class RelaySocksServer : IDisposable
     private long rejected;
     private readonly TimeSpan udpIdleTimeout;
     private readonly Action<string>? log;
+    private readonly string? upstreamCapability;
     public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
     internal int ActiveConnections => clients.Count;
     internal int ActiveTransfers => TransferLimit - transfers.CurrentCount;
@@ -36,13 +37,14 @@ internal sealed class RelaySocksServer : IDisposable
     public bool TcpHealthy { get { var s = Volatile.Read(ref upstream); return Volatile.Read(ref disposed) == 0 && s.Port > 0 && Environment.TickCount64 < s.Expires; } }
     public bool UdpHealthy => Volatile.Read(ref disposed) == 0 && Volatile.Read(ref upstream).Udp?.Healthy == true;
 
-    public RelaySocksServer(int port, TimeSpan? udpIdleTimeout = null, Action<string>? log = null, int maxTransfers = DefaultTransfers)
+    public RelaySocksServer(int port, TimeSpan? udpIdleTimeout = null, Action<string>? log = null, int maxTransfers = DefaultTransfers, string? upstreamCapability = null)
     {
         if (maxTransfers is < 1 or > MaxTransfers) throw new ArgumentOutOfRangeException(nameof(maxTransfers));
         TransferLimit = maxTransfers;
         slots = new(maxTransfers + 64);
         transfers = new(maxTransfers);
         this.log = log;
+        this.upstreamCapability = upstreamCapability;
         this.udpIdleTimeout = udpIdleTimeout ?? TimeSpan.FromMinutes(2);
         if (this.udpIdleTimeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(udpIdleTimeout));
         listener = new TcpListener(IPAddress.Loopback, port); listener.Start(maxTransfers + 64); _ = AcceptAsync();
@@ -148,8 +150,7 @@ internal sealed class RelaySocksServer : IDisposable
                     using var remote = new TcpClient { NoDelay = true };
                     await remote.ConnectAsync(IPAddress.Loopback, state.Port, token).ConfigureAwait(false);
                     var tunnel = remote.GetStream();
-                    await tunnel.WriteAsync(new byte[] { 5, 1, 0 }, token).ConfigureAwait(false);
-                    if (!(await ReadAsync(tunnel, 2, token).ConfigureAwait(false)).AsSpan().SequenceEqual(new byte[] { 5, 0 })) throw new IOException("SSH SOCKS handshake failed.");
+                    await RelayCoreProcess.AuthenticateAsync(tunnel, upstreamCapability, token).ConfigureAwait(false);
                     await tunnel.WriteAsync(new byte[] { 5, 1, 0 }.Concat(address).ToArray(), token).ConfigureAwait(false);
                     byte[] header = await ReadAsync(tunnel, 4, token).ConfigureAwait(false);
                     if (header[0] != 5 || header[2] != 0) throw new IOException("Invalid upstream SOCKS response.");

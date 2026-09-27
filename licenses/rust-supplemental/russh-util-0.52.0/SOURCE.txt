@@ -1,0 +1,2 @@
+https://github.com/warp-tech/russh/tree/3d09c20c52a542ffa327723d3a44cb1edd9b0ca4
+Apache-2.0 declared by the published Cargo.toml. Standard license text supplied from the russh workspace license.

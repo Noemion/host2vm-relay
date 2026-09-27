@@ -14,7 +14,7 @@
 
 Windows 端需要 Clash Verge Rev／Mihomo，启用规则模式、TUN、自动路由、DNS 劫持，并将实际虚拟机 IP 加入 TUN 路由排除。应用本身不替用户修改 Windows 路由、防火墙和 Clash 的受管 TUN 字段。集成验证采用固定版本 Mihomo v1.19.31；旧核心需要检查 AND、PASS、fallback 以及 Fake-IP rule 模式支持情况。
 
-虚拟机需要 Linux／兼容 POSIX shell 的 SSH 环境，允许命令执行与 TCP 转发，能够访问目标网络；UDP 还要求 `python3` 可用。组件通过已校验指纹的 SSH 会话启动，不额外开放端口或安装服务。UDP 域名需要当前 Clash DNS 能解析，不能把仅存在于 VM hosts 中的名称视为自动支持。协议和回退范围见 `UDP_SUPPORT.md`。
+虚拟机支持 Linux x86_64 和 aarch64，需要 SSH 允许命令执行与 TCP 转发，并能够访问目标网络。UDP 静态辅助程序由软件自动部署到用户缓存目录，无需 Python 或 Rust 环境。组件通过已校验指纹的 SSH 会话启动，不额外开放端口或安装服务。UDP 域名需要当前 Clash DNS 能解析，不能把仅存在于 VM hosts 中的名称视为自动支持。协议和回退范围见 `UDP_SUPPORT.md`。
 
 ## 应用 Clash 脚本
 
@@ -38,7 +38,7 @@ Clash 的两个规则文件仍在 Clash 自身的数据目录下，不随应用�
 
 ## 本地构建与发布
 
-日常构建需要 .NET 8 SDK；应用/脚本/DPI 测试需要 Node.js；制作安装包需要 Inno Setup 7。Windows 本机传输测试额外用 Python 作为测试夹具，不是客户端运行依赖。
+日常构建需要 .NET 8 SDK、Rust 和 MSVC 编译工具；应用/脚本/DPI 测试需要 Node.js；制作安装包需要 Inno Setup 7。Python 仅用于执行自动化验收脚本。原生组件构建方法见 `DEVELOPMENT.md`。
 
 ```powershell
 .\build.ps1

@@ -25,6 +25,7 @@ if (args.Length == 4 && args[0] == "--ssh-handshake")
 }
 
 if (args.Length == 1 && args[0] == "--health-check") { await HealthChecks.RunAsync(); return; }
+if (args.Length == 7 && args[0] == "--session-check") { await RustSessionChecks.RunAsync(args[1..]); return; }
 if (args.Length == 2 && args[0] == "--local-check") { await LocalTransportChecks.RunAsync(args[1]); return; }
 if (args.Length < 6) throw new ArgumentException("host sshPort user privateKey fingerprint scriptOutput");
 var options = new RelayConnectionOptions(args[0], int.Parse(args[1]), args[2], 18090, true, args[3], "", true);

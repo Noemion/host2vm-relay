@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <NativeRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</NativeRuntimeIdentifier>
+    <NativeRuntimeIdentifier Condition="'$(NativeRuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</NativeRuntimeIdentifier>
+    <NativeBundleDirectory>$(MSBuildThisFileDirectory)artifacts/native/$(NativeRuntimeIdentifier)</NativeBundleDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="$(NativeBundleDirectory)/*" Link="native/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+  <Target Name="RequireNativeBundle" BeforeTargets="Publish">
+    <Error Condition="!Exists('$(NativeBundleDirectory)/SHA256SUMS')" Text="Build the Rust native bundle for $(NativeRuntimeIdentifier) before publishing." />
+    <Error Condition="!Exists('$(NativeBundleDirectory)/h2vm-agent-linux-x64') Or !Exists('$(NativeBundleDirectory)/h2vm-agent-linux-arm64')" Text="Both statically linked Linux agents are required." />
+  </Target>
+</Project>

@@ -1,0 +1,1 @@
+https://github.com/kobzol/rust-delegate/tree/b129d4cbf4cc499eff7743365dcb0fe5d8d2e820

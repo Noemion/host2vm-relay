@@ -1,7 +1,7 @@
-"""Runs the shipped helper through real pipes and real UDP sockets (no mock server)."""
+"""Historical Python helper regression (not shipped). Runs the legacy helper through real pipes and real UDP sockets (no mock server)."""
 import os, pathlib, queue, socket, struct, subprocess, sys, threading, time, unittest
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'src' / 'Networking'))
-import udp_bridge as wire
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tests' / 'fixtures'))
+import legacy_udp_bridge as wire
 
 class HelperTests(unittest.TestCase):
     def setUp(self):

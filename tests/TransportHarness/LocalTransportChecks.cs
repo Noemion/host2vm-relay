@@ -29,16 +29,12 @@ internal static class LocalTransportChecks
             Check(true, "health endpoint supports repeated probes and state changes on one connection");
             await TcpRelayChecks.RunAsync(Check, token);
             await SessionChecks.RunAsync(Check, token);
-            using var resource = typeof(UdpTunnel).Assembly.GetManifestResourceStream("Host2VMRelay.UdpBridge")!;
-            using var reader = new StreamReader(resource);
-            string code = await reader.ReadToEndAsync(token);
-            var start = new ProcessStartInfo(OperatingSystem.IsWindows() ? "python" : "python3")
+            string agent = Path.Combine(AppContext.BaseDirectory, "native", OperatingSystem.IsWindows() ? "h2vm-agent-test.exe" : "h2vm-agent-linux-x64");
+            var start = new ProcessStartInfo(agent)
             {
                 UseShellExecute = false, RedirectStandardInput = true,
                 RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true
             };
-            start.ArgumentList.Add("-I"); start.ArgumentList.Add("-u"); start.ArgumentList.Add("-c");
-            start.ArgumentList.Add(code);
             using var process = Process.Start(start) ?? throw new IOException("Could not start isolated bridge test");
             Task<string> stderr = process.StandardError.ReadToEndAsync();
             try

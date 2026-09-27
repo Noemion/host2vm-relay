@@ -62,3 +62,8 @@
 源码核查发现新的高并发瓶颈：[SSH.NET 2026.0.0 的 ChannelDirectTcpip.Bind](https://github.com/sshnet/SSH.NET/blob/2026.0.0/src/Renci.SshNet/Channels/ChannelDirectTcpip.cs#L87-L104) 执行阻塞式连续读取。上层使用 async 并不能消除底层每个转发通道占用执行线程的成本。该路径还包含同步写入和窗口等待。现有本机测试排除了这一层，不能将 28 个线程及上述内存数据解释为真实 SSH 连接开销。
 
 高并发能力尚未达到完整发布认证：下一步应使用真正的异步 SSH 数据通道或事件驱动的转发实现，覆盖主机指纹、密码与密钥认证、TCP 半关闭、UDP、取消及重连后，再进行包含真实 SSH 的持续负载测试。默认 512 是准入保护值，不是性能承诺。本候选版本不以高并发认证版本发布。
+
+
+## 2026-09-28：Rust 内核迁移
+
+以上 SSH.NET 瓶颈属于迁移前记录。当前生产路径已改为 Rust Tokio/russh，静态 Linux 辅助程序替代 Python。真实 OpenSSH 测试覆盖 512/2048 条同时连接、半关闭、UDP 往返和父进程退出；Windows 生产 RelaySession 也通过隔离 SSH 服务完成接入测试。资源报告位于 artifacts/checks/rust，单个 Rust 进程数据不包含 .NET 界面、系统套接字及虚拟机开销。

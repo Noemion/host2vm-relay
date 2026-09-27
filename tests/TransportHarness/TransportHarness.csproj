@@ -10,6 +10,7 @@
     <PackageReference Include="Esprima" Version="3.0.6" />
     <Compile Include="../../src/Networking/BackgroundCleanup.cs" Link="BackgroundCleanup.cs" />
     <Compile Include="../../src/Diagnostics/PendingLogBuffer.cs" Link="PendingLogBuffer.cs" />
+    <Compile Include="../../src/Networking/RelayCoreProcess.cs" Link="RelayCoreProcess.cs" />
     <Compile Include="../../src/Networking/RelaySession.cs" Link="RelaySession.cs" />
     <Compile Include="../../src/Networking/RelayHealthTiming.cs" Link="RelayHealthTiming.cs" />
     <Compile Include="../../src/Networking/ByteBudget.cs" Link="ByteBudget.cs" />
@@ -18,6 +19,6 @@
     <Compile Include="../../src/Networking/DuplexRelay.cs" Link="DuplexRelay.cs" />
     <Compile Include="../../src/Integration/ClashScript.cs" Link="ClashScript.cs" />
     <Compile Include="../../src/Integration/ScriptComposer.cs" Link="ScriptComposer.cs" />
-    <EmbeddedResource Include="../../src/Networking/udp_bridge.py" LogicalName="Host2VMRelay.UdpBridge" />
+    <Content Include="../../artifacts/native/tests/h2vm-agent.exe" Condition="Exists('../../artifacts/native/tests/h2vm-agent.exe')" Link="native/h2vm-agent-test.exe" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

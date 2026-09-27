@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Channels;
-using Renci.SshNet;
 
 namespace Host2VMRelay;
 
@@ -37,28 +36,6 @@ internal sealed class UdpTunnel : IDisposable
         _ = Task.Run(WriteLoop);
     }
 
-    public static async Task<UdpTunnel> StartAsync(SshClient client, CancellationToken cancellationToken = default)
-    {
-        using var resource = typeof(UdpTunnel).Assembly.GetManifestResourceStream("Host2VMRelay.UdpBridge")
-            ?? throw new IOException("UDP 中继资源缺失。");
-        using var memory = new MemoryStream(); resource.CopyTo(memory);
-        string encoded = Convert.ToBase64String(memory.ToArray());
-        // Only fixed code and Base64 enter the command. No user path or credential is interpolated.
-        var command = client.CreateCommand("python3 -I -u -c 'import base64;exec(base64.b64decode(\"" + encoded + "\"))'");
-        command.CommandTimeout = Timeout.InfiniteTimeSpan;
-        UdpTunnel? tunnel = null;
-        try
-        {
-            Task execution = command.ExecuteAsync(cancellationToken);
-            Stream stdin = command.CreateInputStream();
-            tunnel = new UdpTunnel(stdin, command.OutputStream, command.Dispose);
-            _ = ObserveCommand(execution, tunnel);
-            await tunnel.InitializeAsync(cancellationToken).ConfigureAwait(false);
-            return tunnel;
-        }
-        catch { if (tunnel is not null) tunnel.Dispose(); else command.Dispose(); throw; }
-    }
-
     // The stream transport is also used by the cross-platform integration harness.
     internal static async Task<UdpTunnel> OpenStreamsAsync(Stream input, Stream output, Action release, CancellationToken token = default)
     {
@@ -69,12 +46,7 @@ internal sealed class UdpTunnel : IDisposable
     private async Task InitializeAsync(CancellationToken token)
     {
         await ready.Task.WaitAsync(TimeSpan.FromSeconds(8), token).ConfigureAwait(false);
-        if (!await ProbeAsync(token).ConfigureAwait(false)) throw new IOException("虚拟机 UDP 自检失败；需要 Python 3 和可用的 UDP 套接字。");
-    }
-    private static async Task ObserveCommand(Task execution, UdpTunnel tunnel)
-    {
-        try { await execution.ConfigureAwait(false); tunnel.Fail("虚拟机 UDP 组件已退出。"); }
-        catch (Exception ex) { tunnel.Fail(ex.Message); }
+        if (!await ProbeAsync(token).ConfigureAwait(false)) throw new IOException("虚拟机 UDP 自检失败；请检查辅助程序执行权限和 UDP 套接字。");
     }
     public uint Register(Action<byte[]> receive)
     {
@@ -122,16 +94,16 @@ internal sealed class UdpTunnel : IDisposable
         catch (IOException ex) { LastError = ex.Message; return false; }
         finally { probes.TryRemove(id, out _); }
     }
-    private void ReadLoop()
+    private async Task ReadLoop()
     {
         try
         {
             byte[] size = new byte[4];
             while (!stopped.IsCancellationRequested)
             {
-                output.ReadExactly(size); int count = BinaryPrimitives.ReadInt32BigEndian(size);
+                await output.ReadExactlyAsync(size, stopped.Token).ConfigureAwait(false); int count = BinaryPrimitives.ReadInt32BigEndian(size);
                 if (count < 5 || count > MaxFrame) throw new IOException("无效 UDP 中继帧。");
-                byte[] frame = new byte[count]; output.ReadExactly(frame);
+                byte[] frame = new byte[count]; await output.ReadExactlyAsync(frame, stopped.Token).ConfigureAwait(false);
                 uint id = BinaryPrimitives.ReadUInt32BigEndian(frame.AsSpan(1)); byte[] body = frame[5..];
                 switch ((char)frame[0])
                 {
@@ -157,8 +129,9 @@ internal sealed class UdpTunnel : IDisposable
         {
             await foreach (byte[] frame in pending.Reader.ReadAllAsync(stopped.Token).ConfigureAwait(false))
             {
-                // SSH.NET's channel stream may block on remote flow control; never block the UI.
-                input.Write(frame); input.Flush();
+                // The worker pipe is asynchronous; remote flow control never parks a UI thread.
+                await input.WriteAsync(frame, stopped.Token).ConfigureAwait(false);
+                await input.FlushAsync(stopped.Token).ConfigureAwait(false);
             }
         }
         catch (Exception ex) { Fail(ex.Message); }

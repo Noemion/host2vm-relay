@@ -10,3 +10,5 @@ settings.json.tmp
 id_rsa*
 id_ed25519*
 artifacts/
+native/target/
+__pycache__/

@@ -1,0 +1,15 @@
+[package]
+name = "h2vm-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+russh = { version = "=0.63.3", default-features = false, features = ["ring", "rsa"] }
+zeroize = "1"

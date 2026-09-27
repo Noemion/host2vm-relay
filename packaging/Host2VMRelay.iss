@@ -55,6 +55,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#PayloadRoot}\installer\win-{#AppArch}\Host2VMRelay.exe"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: BeforeFileInstall; AfterInstall: AfterFileInstall
+Source: "{#PayloadRoot}\installer\win-{#AppArch}\native\*"; DestDir: "{app}\native"; Flags: ignoreversion recursesubdirs createallsubdirs; BeforeInstall: BeforeFileInstall; AfterInstall: AfterFileInstall
 Source: "{#PayloadRoot}\common\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; BeforeInstall: BeforeFileInstall; AfterInstall: AfterFileInstall
 
 [Icons]

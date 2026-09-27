@@ -172,7 +172,7 @@ public sealed partial class MainForm
             finally { if (!test.IsDisposed) test.Enabled = true; }
         };
         UiLayout.Add(page, UiLayout.Card("03  验证连接", "浏览目标网页，并在 Clash 连接列表确认命中 Host2VMRelay。", UiLayout.Field("测试网址", testUrl), UiLayout.Actions(test), testResult));
-        UiLayout.Add(page, UiLayout.Help("UDP 保持原域名、IP 和端口；虚拟机需 Python 3。单播数据报经 SSH 封装，不支持广播/组播；Chrome 自定义安全 DNS 可能绕过分流。"));
+        UiLayout.Add(page, UiLayout.Help("UDP 保持原域名、IP 和端口；支持 Linux x64 / ARM64，连接时自动准备转发组件。单播数据报经 SSH 封装，不支持广播/组播；Chrome 自定义安全 DNS 可能绕过分流。"));
     }
     private string GenerateScript(string? existing)
     {

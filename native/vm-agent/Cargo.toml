@@ -1,0 +1,10 @@
+[package]
+name = "h2vm-agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+tokio.workspace = true

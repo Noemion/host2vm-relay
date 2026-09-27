@@ -4,7 +4,7 @@
 
 在“连接”页保持“透明转发 UDP”开启，连接虚拟机。在“Clash 接入”中合并已有完整脚本，复制新结果到当前订阅并应用。原客户端继续访问原来的域名、IP、端口；不为每个应用单独设置代理，不逐个映射 UDP 服务端口。现有 Mieru 节点的 `udp = true` 继续保留，未匹配的流量使用原来的分流规则。
 
-远端要求 Linux／兼容 POSIX shell 的 SSH 环境、允许执行命令和 TCP 转发，且 `python3` 可用。应用通过已校验主机指纹的 SSH 会话在内存启动 Python 标准库组件，不安装系统服务、不使用 root、不另开虚拟机监听端口。关闭 SSH 会话或长期没有控制输入时组件退出。Windows 客户端无需安装 Python。
+远端支持 Linux x86_64 和 aarch64，要求 SSH 允许执行命令和 TCP 转发。应用通过已校验主机指纹的 SSH 会话部署静态 Rust 辅助程序，按 SHA-256 存入当前用户的 `~/.cache/host2vm-relay`，同一文件可复用。无需安装语言运行时，不安装系统服务、不使用 root、不另开虚拟机监听端口。关闭 SSH 会话或连续 30 秒没有控制输入时组件退出。缓存文件保留，以便下次连接复用。
 
 支持单播 UDP 请求与响应、IPv4／IPv6 目标、空数据报和并发会话。暂不支持广播、组播、SOCKS 分片重组或基于局域网广播的自动发现。数据报最大负载 65507 字节；会话与队列有明确上限，过载按 UDP 语义丢弃。客户端到虚拟机这段采用 SSH/TCP 承载，丢包时会受 TCP 队头阻塞影响，不承诺与原生直连 UDP 相同的时延或吞吐。
 
@@ -28,4 +28,4 @@ TCP 和 UDP 独立检测。SSH 通道失效时两者回退；只有 UDP 组件�
 
 生产代码：`UdpTunnel.cs`、`RelaySocksServer.cs`、`udp_bridge.py`、`MainForm.Networking.cs`。Linux 网络验收复用生产传输代码，创建独立网络命名空间、固定指纹 SSH 服务、真实 Mihomo TUN 和普通 socket 客户端。同一服务地址在宿主与虚拟机返回不同标识，可判断真实出口。检查 IP、现有 DNS 可解析的名字、仅虚拟机可达的地址、并发、空包、UDP 独立失效、断网恢复与进程被终止后的原路径回退。VM-only hosts 名称属于已知 DNS 限制而不是通过项。
 
-Windows 本机传输检查使用实际 Windows TCP/UDP 套接字、生产 SOCKS 入口及独立的 Python 测试进程；它不等于 Windows TUN + 用户公司内网的全链路实测。真实 Windows Clash 版本、企业 DNS、防火墙及具体业务协议仍应在部署环境验证。
+Windows 本机传输检查使用实际 Windows TCP/UDP 套接字、生产 SOCKS 入口及独立的 Rust 辅助进程；它不等于 Windows TUN + 用户公司内网的全链路实测。真实 Windows Clash 版本、企业 DNS、防火墙及具体业务协议仍应在部署环境验证。
