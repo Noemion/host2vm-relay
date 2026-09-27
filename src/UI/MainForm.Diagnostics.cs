@@ -81,6 +81,9 @@ public sealed partial class MainForm
             audit.Check(Math.Abs(UiLayout.BaseFontPoints - (float)settings.FontSizePoints) < .01F && Math.Abs(UiTheme.ContentScale - .8F * settings.UiScalePercent / 100F) < .01F, "saved content scale and independent font size are applied");
             SelectPage(4); UiAcceptance.Settle(this);
             var folderField = tabs.TabPages[4].Controls.Find("settingsFolder", true).OfType<TextBox>().Single();
+            var capacityField = tabs.TabPages[4].Controls.Find("concurrentConnectionLimit", true).OfType<NumericUpDown>().Single();
+            audit.Check(capacityField.Minimum == 64 && capacityField.Maximum == 2048 && capacityField.Value == settings.ConcurrentConnectionLimit,
+                "settings expose the saved concurrent connection limit within the supported range");
             audit.Check(folderField.ReadOnly && folderField.Text == Settings.Folder, "settings page displays the active configuration path");
             SelectPage(0);
             int originalAuth = auth.SelectedIndex;

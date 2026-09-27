@@ -10,6 +10,10 @@ namespace Host2VMRelay;
 /// <summary>Bounded datagram multiplexing over one authenticated SSH exec channel.</summary>
 internal sealed class UdpTunnel : IDisposable
 {
+    internal const int MaxAssociations = 2048;
+    // Shared across all associations; per-association packet limits alone could
+    // otherwise retain gigabytes when thousands of local consumers stop reading.
+    internal ByteBudget ReplyBudget { get; } = new(16 * 1024 * 1024);
     private const int MaxFrame = 66048;
     private readonly Stream input, output;
     private readonly Action release;
@@ -77,7 +81,7 @@ internal sealed class UdpTunnel : IDisposable
         ArgumentNullException.ThrowIfNull(receive);
         lock (receiverGate)
         {
-            if (!Healthy || receivers.Count >= 128) throw new IOException("UDP 中继不可用或会话数达到上限。");
+            if (!Healthy || receivers.Count >= MaxAssociations) throw new IOException("UDP 中继不可用或会话数达到上限。");
             uint id;
             do { id = unchecked((uint)++nextAssociation); } while (id == 0 || !receivers.TryAdd(id, receive));
             return id;

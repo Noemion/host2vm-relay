@@ -51,7 +51,18 @@ internal static class ConcurrencyChecks
         check(longBatch.Length <= PendingLogBuffer.MaxBatchCharacters && longBatch.Length > 0,
             "large messages cannot exceed the per-frame UI character budget");
 
-        using var relay = new RelaySocksServer(0);
+        var budget = new ByteBudget(16 * 1024 * 1024);
+        int reserved = 0;
+        Parallel.For(0, 4096, _ => { if (budget.TryReserve(65536)) Interlocked.Increment(ref reserved); });
+        check(reserved == 256 && budget.Used == 16 * 1024 * 1024, "concurrent UDP reply queues share a fixed 16 MiB budget");
+        Parallel.For(0, reserved, _ => budget.Release(65536));
+        check(budget.Used == 0 && budget.TryReserve(1024), "UDP byte budget is reusable after release");
+        budget.Release(1024);
+        using var configured = new RelaySocksServer(0, maxTransfers: 64);
+        using var defaults = new RelaySocksServer(0);
+        check(configured.TransferLimit == 64 && defaults.TransferLimit == 512, "custom and default connection limits reach transport admission");
+
+        using var relay = new RelaySocksServer(0, maxTransfers: RelaySocksServer.MaxTransfers);
         int port = relay.Port;
         var clients = new System.Collections.Concurrent.ConcurrentBag<System.Net.Sockets.TcpClient>();
         try

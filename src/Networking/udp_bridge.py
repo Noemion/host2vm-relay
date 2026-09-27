@@ -15,7 +15,7 @@ import threading
 import time
 
 MAX_FRAME = 66048
-MAX_SESSIONS = 512
+MAX_SESSIONS = 2048
 IDLE_SECONDS = 120
 incoming = queue.Queue(128)
 outgoing = queue.Queue(128)

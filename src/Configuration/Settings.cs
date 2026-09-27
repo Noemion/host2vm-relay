@@ -23,6 +23,8 @@ public sealed class Settings
     public bool ShowConnectionNotifications { get; set; } = true;
     public bool LogForwardingRequests { get; set; } = true;
     public int ReconnectDelaySeconds { get; set; } = 15;
+    public const int MinConcurrentConnections = 64, MaxConcurrentConnections = 2048;
+    public int ConcurrentConnectionLimit { get; set; } = 512;
     public Dictionary<string, string> HostKeys { get; set; } = new();
 
     public static readonly string DefaultFolder = Path.Combine(
@@ -56,6 +58,8 @@ public sealed class Settings
     }
     private void Validate()
     {
+        if (ConcurrentConnectionLimit is < MinConcurrentConnections or > MaxConcurrentConnections)
+            throw new IOException("并发连接上限必须在 64～2048 之间，请修正 settings.json。");
         if (UiScalePercent is < MinUiScalePercent or > MaxUiScalePercent || FontSizePoints is < MinFontSizePoints or > MaxFontSizePoints || ReconnectDelaySeconds is < 5 or > 120)
             throw new IOException("界面缩放、字体大小或重连间隔超出支持范围，请修正 settings.json。");
         // Fail before binding controls or publishing a profile. Never silently reset

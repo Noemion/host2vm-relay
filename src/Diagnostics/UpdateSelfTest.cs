@@ -121,11 +121,14 @@ internal static class UpdateSelfTest
             var legacyDefaults = Settings.Deserialize("{}");
             check(legacyDefaults.UiScalePercent == 100 && legacyDefaults.FontSizePoints == 9m && legacyDefaults.ReconnectDelaySeconds == 15,
                 "legacy settings receive safe appearance and reconnect defaults");
-            active = active.SaveUpdated(s => { s.UiScalePercent = 110; s.FontSizePoints = 10.5m; s.ReconnectDelaySeconds = 30; s.LogForwardingRequests = false; });
+            check(Settings.Deserialize("{}").ConcurrentConnectionLimit == 512, "legacy profiles default to 512 concurrent connections");
+            active = active.SaveUpdated(s => { s.UiScalePercent = 110; s.FontSizePoints = 10.5m; s.ReconnectDelaySeconds = 30; s.LogForwardingRequests = false; s.ConcurrentConnectionLimit = 2048; });
             var appearance = Settings.Load();
+            check(appearance.ConcurrentConnectionLimit == 2048, "connection capacity survives save and reload");
             check(appearance.UiScalePercent == 110 && appearance.FontSizePoints == 10.5m && appearance.ReconnectDelaySeconds == 30 && !appearance.LogForwardingRequests,
                 "appearance and behavior preferences survive save and reload");
             foreach (string invalid in new[] { "{\"Port\":0}", "{\"SocksPort\":65536}", "{\"HostKeys\":null}", "{\"Rules\":null}",
+                "{\"ConcurrentConnectionLimit\":63}", "{\"ConcurrentConnectionLimit\":2049}",
                 "{\"UiScalePercent\":0}", "{\"UiScalePercent\":111}", "{\"FontSizePoints\":10.6}", "{\"FontSizePoints\":99}", "{\"ReconnectDelaySeconds\":0}" })
             {
                 File.WriteAllText(path, invalid);

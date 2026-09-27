@@ -67,19 +67,24 @@ public sealed partial class MainForm
         var notifications = new CheckBox { Text = "连接状态变化时显示托盘通知", AutoSize = true, Checked = settings.ShowConnectionNotifications };
         var requestLogs = new CheckBox { Text = "记录转发请求（包含目标地址）", AutoSize = true, Checked = settings.LogForwardingRequests };
         var reconnectDelay = new NumericUpDown { Minimum = 5, Maximum = 120, Value = settings.ReconnectDelaySeconds };
+        var connectionLimit = new NumericUpDown { Name = "concurrentConnectionLimit", Minimum = Settings.MinConcurrentConnections,
+            Maximum = Settings.MaxConcurrentConnections, Increment = 64, Value = settings.ConcurrentConnectionLimit };
         var behaviorStatus = UiLayout.Help("通知和请求日志保存后立即生效。关闭请求日志仍保留连接状态及 SSH 错误；重连间隔从下一次连接尝试结束后使用。");
         var saveBehavior = UiLayout.Primary("保存运行设置", 160);
         saveBehavior.Click += (_, _) =>
         {
             try
             {
-                settings = settings.SaveUpdated(s => { s.ShowConnectionNotifications = notifications.Checked; s.LogForwardingRequests = requestLogs.Checked; s.ReconnectDelaySeconds = (int)reconnectDelay.Value; });
-                saveBehavior.ShowFeedback("✓ 已保存"); behaviorStatus.Text = "运行设置已保存。连接页的“断线后自动重连”仍决定是否启用重连。";
+                settings = settings.SaveUpdated(s => { s.ShowConnectionNotifications = notifications.Checked; s.LogForwardingRequests = requestLogs.Checked; s.ReconnectDelaySeconds = (int)reconnectDelay.Value; s.ConcurrentConnectionLimit = (int)connectionLimit.Value; });
+                saveBehavior.ShowFeedback("✓ 已保存"); behaviorStatus.Text = "运行设置已保存。并发上限在下次连接时生效，当前连接保持运行。";
             }
             catch (Exception ex) { behaviorStatus.Text = "保存失败：" + ex.Message; }
         };
         UiLayout.Add(page, UiLayout.Card("运行与通知", "减少不必要的提示，并控制诊断记录的详细程度。",
-            notifications, requestLogs, UiLayout.Field("自动重连间隔（秒）", reconnectDelay), UiLayout.Actions(saveBehavior), behaviorStatus));
+            notifications, requestLogs,
+            UiLayout.Pair(UiLayout.Field("自动重连间隔（秒）", reconnectDelay), UiLayout.Field("并发连接上限", connectionLimit)),
+            UiLayout.Help("默认 512，范围 64～2048。TCP 连接与 UDP 关联共用名额；达到上限时拒绝新请求。内存或虚拟机资源有限时可调低，下次连接生效。"),
+            UiLayout.Actions(saveBehavior), behaviorStatus));
         UiLayout.Add(page, UiLayout.Help("配置目录定位文件仅保存路径，位于 LocalAppData/Host2VMRelay/storage.json。Clash 的规则文件仍位于 Clash 数据目录，不随本配置迁移。"));
         bool CanMoveProfile()
         {

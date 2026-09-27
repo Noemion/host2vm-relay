@@ -16,12 +16,14 @@ internal sealed class RelaySocksServer : IDisposable
     private readonly TcpListener listener;
     private readonly CancellationTokenSource lifetime = new();
     private readonly ConcurrentDictionary<TcpClient, byte> clients = new();
-    internal const int MaxTransfers = 128;
-    internal const int MaxConnections = MaxTransfers + 32;
+    internal const int MaxTransfers = 2048;
+    internal const int DefaultTransfers = 512;
+    internal const int MaxConnections = MaxTransfers + 64;
     // Extra front-door capacity lets probes reach HealthAsync when all forwarding
     // slots are occupied. Handshakes remain bounded and have an eight-second deadline.
-    private readonly SemaphoreSlim slots = new(MaxConnections);
-    private readonly SemaphoreSlim transfers = new(MaxTransfers);
+    private readonly SemaphoreSlim slots;
+    private readonly SemaphoreSlim transfers;
+    internal int TransferLimit { get; }
     private readonly object admissionGate = new();
     private int disposed;
     private long rejected;
@@ -29,17 +31,21 @@ internal sealed class RelaySocksServer : IDisposable
     private readonly Action<string>? log;
     public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
     internal int ActiveConnections => clients.Count;
-    internal int ActiveTransfers => MaxTransfers - transfers.CurrentCount;
+    internal int ActiveTransfers => TransferLimit - transfers.CurrentCount;
     internal long RejectedConnections => Interlocked.Read(ref rejected);
     public bool TcpHealthy { get { var s = Volatile.Read(ref upstream); return Volatile.Read(ref disposed) == 0 && s.Port > 0 && Environment.TickCount64 < s.Expires; } }
     public bool UdpHealthy => Volatile.Read(ref disposed) == 0 && Volatile.Read(ref upstream).Udp?.Healthy == true;
 
-    public RelaySocksServer(int port, TimeSpan? udpIdleTimeout = null, Action<string>? log = null)
+    public RelaySocksServer(int port, TimeSpan? udpIdleTimeout = null, Action<string>? log = null, int maxTransfers = DefaultTransfers)
     {
+        if (maxTransfers is < 1 or > MaxTransfers) throw new ArgumentOutOfRangeException(nameof(maxTransfers));
+        TransferLimit = maxTransfers;
+        slots = new(maxTransfers + 64);
+        transfers = new(maxTransfers);
         this.log = log;
         this.udpIdleTimeout = udpIdleTimeout ?? TimeSpan.FromMinutes(2);
         if (this.udpIdleTimeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(udpIdleTimeout));
-        listener = new TcpListener(IPAddress.Loopback, port); listener.Start(128); _ = AcceptAsync();
+        listener = new TcpListener(IPAddress.Loopback, port); listener.Start(maxTransfers + 64); _ = AcceptAsync();
     }
     public void SetUpstream(int tcpPort, UdpTunnel? udp)
     {
@@ -225,7 +231,11 @@ internal sealed class RelaySocksServer : IDisposable
         using var socket = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         var replies = Channel.CreateBounded<byte[]>(64); IPEndPoint? peer = expectedPort == 0 ? null : new(IPAddress.Loopback, expectedPort);
         var reportedTargets = new HashSet<string>(StringComparer.Ordinal);
-        uint id = tunnel.Register(packet => replies.Writer.TryWrite(packet));
+        uint id = tunnel.Register(packet =>
+        {
+            if (!tunnel.ReplyBudget.TryReserve(packet.Length)) return;
+            if (!replies.Writer.TryWrite(packet)) tunnel.ReplyBudget.Release(packet.Length);
+        });
         try
         {
             await control.GetStream().WriteAsync(Reply(0, ((IPEndPoint)socket.Client.LocalEndPoint!).Port), stop.Token).ConfigureAwait(false);
@@ -253,10 +263,14 @@ internal sealed class RelaySocksServer : IDisposable
             {
                 await foreach (byte[] packet in replies.Reader.ReadAllAsync(stop.Token).ConfigureAwait(false))
                 {
-                    var destination = Volatile.Read(ref peer);
-                    if (destination is null || !ValidDatagram(packet)) continue;
-                    await socket.SendAsync(packet, destination, stop.Token).ConfigureAwait(false);
-                    stop.CancelAfter(udpIdleTimeout);
+                    try
+                    {
+                        var destination = Volatile.Read(ref peer);
+                        if (destination is null || !ValidDatagram(packet)) continue;
+                        await socket.SendAsync(packet, destination, stop.Token).ConfigureAwait(false);
+                        stop.CancelAfter(udpIdleTimeout);
+                    }
+                    finally { tunnel.ReplyBudget.Release(packet.Length); }
                 }
             }
             stop.CancelAfter(udpIdleTimeout);
@@ -267,7 +281,11 @@ internal sealed class RelaySocksServer : IDisposable
             try { await Task.WhenAll(receive, send, closed).ConfigureAwait(false); }
             catch (Exception ex) when (ex is IOException or SocketException or OperationCanceledException or ObjectDisposedException) { }
         }
-        finally { stop.Cancel(); tunnel.Unregister(id); replies.Writer.TryComplete(); }
+        finally
+        {
+            stop.Cancel(); tunnel.Unregister(id); replies.Writer.TryComplete();
+            while (replies.Reader.TryRead(out var queued)) tunnel.ReplyBudget.Release(queued.Length);
+        }
     }
     public void Dispose()
     {

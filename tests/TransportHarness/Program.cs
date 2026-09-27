@@ -1,6 +1,9 @@
 using Host2VMRelay;
 using System.Text.Json;
 
+if (args.Length == 3 && args[0] == "--load-relay")
+{ await LoadRelayProcess.RunChildAsync(int.Parse(args[1]), int.Parse(args[2])); return; }
+
 if (args.Length == 4 && args[0] == "--ssh-handshake")
 {
     int proxyPort = int.Parse(args[3]);

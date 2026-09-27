@@ -40,7 +40,7 @@ public sealed partial class MainForm
         state.ForeColor = Color.FromArgb(145, 83, 0);
         string endpoint = settings.Host + ":" + settings.Port;
         var options = new RelayConnectionOptions(settings.Host, settings.Port, settings.User,
-            settings.SocksPort, settings.UseKey, settings.KeyPath, secret.Text, settings.EnableUdp);
+            settings.SocksPort, settings.UseKey, settings.KeyPath, secret.Text, settings.EnableUdp, settings.ConcurrentConnectionLimit);
         try
         {
             await Cleanup();

@@ -4,7 +4,7 @@ using Renci.SshNet;
 namespace Host2VMRelay;
 
 internal sealed record RelayConnectionOptions(string Host, int Port, string User, int SocksPort,
-    bool UseKey, string KeyPath, string Secret, bool EnableUdp)
+    bool UseKey, string KeyPath, string Secret, bool EnableUdp, int MaxConnections = RelaySocksServer.DefaultTransfers)
 {
     // Do not let a diagnostic interpolation expose the password or private-key passphrase.
     public override string ToString() => $"{User}@{Host}:{Port}, SOCKS {SocksPort}, UDP {EnableUdp}";
@@ -58,7 +58,7 @@ internal sealed class RelaySession : IDisposable
     }
 
     public RelayHealth Health => new(relay.TcpHealthy, relay.UdpHealthy);
-    public (int Active, int Limit, long Rejected) Load => (relay.ActiveTransfers, RelaySocksServer.MaxTransfers, relay.RejectedConnections);
+    public (int Active, int Limit, long Rejected) Load => (relay.ActiveTransfers, relay.TransferLimit, relay.RejectedConnections);
     public bool IsConnected { get { lock (gate) return !disposed && client.IsConnected && forward.IsStarted; } }
 
     private RelaySession(SshClient client, ForwardedPortDynamic forward, PrivateKeyFile? key,
@@ -106,7 +106,7 @@ internal sealed class RelaySession : IDisposable
                 forward.Exception += (_, e) => log("TCP：" + e.Exception.Message);
                 client.AddForwardedPort(forward);
                 forward.Start();
-                relay = new RelaySocksServer(options.SocksPort, log: trafficLog ?? log);
+                relay = new RelaySocksServer(options.SocksPort, log: trafficLog ?? log, maxTransfers: options.MaxConnections);
                 relay.SetUpstream((int)forward.BoundPort, null);
                 token.ThrowIfCancellationRequested();
                 return new RelaySession(client, forward, key, relay, options.EnableUdp, log);

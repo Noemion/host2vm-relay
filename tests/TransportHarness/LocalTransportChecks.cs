@@ -13,7 +13,7 @@ internal static class LocalTransportChecks
         resultPath = Path.GetFullPath(resultPath);
         Directory.CreateDirectory(Path.GetDirectoryName(resultPath)!);
         var checks = new List<string>();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         var token = timeout.Token;
         void Check(bool ok, string label)
         {
@@ -23,6 +23,7 @@ internal static class LocalTransportChecks
         try
         {
             await ConcurrencyChecks.RunAsync(Check, token);
+            await LoadChecks.RunAsync(Check, token, RelaySocksServer.DefaultTransfers);
             await LoadChecks.RunAsync(Check, token);
             await HealthChecks.RunAsync();
             Check(true, "health endpoint supports repeated probes and state changes on one connection");
@@ -46,12 +47,12 @@ internal static class LocalTransportChecks
                     () => { if (!process.HasExited) process.Kill(); }, token);
                 Check(tunnel.Healthy && await tunnel.ProbeAsync(token), "native host streams exchange a nonce checked by real UDP");
                 var associations = new System.Collections.Concurrent.ConcurrentBag<uint>();
-                Parallel.For(0, 256, _ =>
+                Parallel.For(0, UdpTunnel.MaxAssociations * 2, _ =>
                 {
                     try { associations.Add(tunnel.Register(_ => { })); }
                     catch (IOException) { }
                 });
-                Check(associations.Count == 128, "256 concurrent UDP registrations respect the atomic 128-association limit");
+                Check(associations.Count == UdpTunnel.MaxAssociations, "4096 concurrent UDP registrations respect the atomic 2048-association limit");
                 foreach (uint association in associations) tunnel.Unregister(association);
                 uint reused = tunnel.Register(_ => { }); tunnel.Unregister(reused);
                 Check(true, "UDP registration capacity is reusable after concurrent release");
@@ -102,6 +103,7 @@ internal static class LocalTransportChecks
                 for (int i = 0; i < 100 && relay.ActiveConnections != 0; i++) await Task.Delay(10, token);
                 Check(relay.ActiveConnections == 0, "idle UDP association releases its admission slot");
                 Check(await tunnel.ProbeAsync(token), "UDP tunnel remains healthy after association timeout");
+                Check(tunnel.ReplyBudget.Used == 0, "UDP shutdown releases the shared reply-byte budget");
                 Check(!relay.TcpHealthy && relay.UdpHealthy, "transport health is independent");
                 process.Kill(); await process.WaitForExitAsync(token);
                 for (int i = 0; i < 20 && tunnel.Healthy; i++) await Task.Delay(50, token);
