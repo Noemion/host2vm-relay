@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.4 — Rust 转发内核与并发保护（待发布）
+## 0.6.4 — Rust 转发内核与并发保护
 
 - 使用 Rust 异步 SSH 内核，移除生产 SSH.NET 依赖；保留指纹校验、TCP 半关闭与界面重连逻辑。
 - 自动部署 Linux x86_64/aarch64 静态 UDP 辅助程序，虚拟机无需 Python 或 Rust 运行环境。
