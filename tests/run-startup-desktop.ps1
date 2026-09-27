@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][string]$Output,
     [ValidateSet('Startup','Layout')][string]$Mode = 'Startup',
     [ValidateSet(100,125,150,175,200)][int]$ScalePercent = 200,
-    [switch]$SimulateDpi
+    [switch]$SimulateDpi,
+    [switch]$CompactViewport
 )
 $ErrorActionPreference = 'Stop'
 # Never switch the input desktop. The diagnostic owns and closes only its child.
@@ -57,7 +58,8 @@ $outputPath = [IO.Path]::GetFullPath($Output)
 if (($runtimePath + $assemblyPath + $outputPath).Contains('"')) { throw 'Quotes are not allowed in diagnostic paths.' }
 $checkArgument = if ($Mode -eq 'Startup') { '--startup-check' } else {
     $nativeArgument = if ($SimulateDpi) { '' } else { ' --native-dpi' }
-    "--smoke$nativeArgument --ui-scale=$ScalePercent"
+    $compactArgument = if ($CompactViewport) { ' --compact-viewport' } else { '' }
+    "--smoke$nativeArgument$compactArgument --ui-scale=$ScalePercent"
 }
 $command = '"' + $runtimePath + '" exec "' + $assemblyPath + '" ' + $checkArgument + ' "' + $outputPath + '"'
 $code = [IsolatedStartupDesktop]::Run($command, $PWD.Path)

@@ -86,11 +86,12 @@ public sealed partial class MainForm
             shellBody.ColumnStyles[0].Width = compact ? 0 : UiTheme.Px(this, 204);
             navigation.FlowDirection = compact ? FlowDirection.LeftToRight : FlowDirection.TopDown;
             navigation.WrapContents = compact; navigation.AutoSize = compact; navigation.Dock = compact ? DockStyle.Top : DockStyle.Fill;
-            string[] shortNames = { "连接", "规则", "Clash", "日志", "设置" }; string[] longNames = { "连接", "转发规则", "Clash 接入", "运行日志", "设置" };
+            string[] shortNames = { "连接", "规则", "Clash 接入", "日志", "设置" }; string[] longNames = { "连接", "转发规则", "Clash 接入", "运行日志", "设置" };
             foreach (var button in navigationButtons)
             {
                 button.Compact = compact; button.Text = compact ? shortNames[button.PageIndex] : longNames[button.PageIndex];
-                button.MinimumSize = new Size(UiTheme.Px(this, compact ? 82 : 174), UiTheme.Px(this, compact ? 40 : 44));
+                int minimumWidth = compact ? button.PageIndex == 2 ? 130 : 82 : 174;
+                button.MinimumSize = new Size(UiTheme.Px(this, minimumWidth), UiTheme.Px(this, compact ? 40 : 44));
                 button.Margin = new Padding(0, 0, UiTheme.Px(this, compact ? 6 : 0), UiTheme.Px(this, 6));
             }
             contentArea.Padding = new Padding(UiTheme.Px(this, compact ? 16 : 26), UiTheme.Px(this, compact ? 10 : 22), UiTheme.Px(this, compact ? 16 : 26), UiTheme.Px(this, 10));

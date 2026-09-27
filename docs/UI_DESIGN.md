@@ -37,7 +37,7 @@ Settings shows the active profile path and offers open/change/default operations
 
 The tray menu retains native keyboard navigation and dismissal. Its renderer reads the Windows app theme when opening, uses DPI-aware padding and subdued separators, and falls back to the system renderer in high-contrast mode. Windows 11 owns the outer rounded corners and shadow. Connection actions are enabled from the current session state; menu themes have isolated-desktop screenshot coverage.
 
-The editor region alone scrolls; generation, copy, save and return controls remain outside it. Two compact selectors switch between editable source and read-only output in one borderless host. Both documents retain selection, undo and scroll state. The rounded frame fits the available height instead of enforcing a fixed minimum that clips its bottom edge.
+The editor scrolls independently; generation, copy, save and return controls remain outside it. When a small viewport cannot fit those controls and a readable editor, the workspace itself also scrolls rather than collapsing the editor or overlapping actions. Two compact selectors switch between editable source and read-only output in one borderless host. Both documents retain selection, undo and scroll state. The rounded frame fits the editor host without clipping its bottom edge.
 
 Empty input generates a new script. Existing input is inspected and merged automatically, including complete programs, function-body fragments and prior managed output. Updating input invalidates stale output. The Windows preview normalizes hard line breaks; composition preserves user logic and reports managed-region conflicts. Ctrl+Enter generates and copies; Ctrl+Tab switches documents inside the workspace.
 

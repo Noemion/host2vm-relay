@@ -14,6 +14,7 @@ internal sealed class ScriptDialog : Form
     private readonly Panel editorHost = new() { Name = "scriptEditor", Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly ActionButton originalTab = UiLayout.Button("原始脚本", 110), generatedTab = UiLayout.Button("生成结果（只读）", 170);
     private readonly EntryFrame originalFrame, generatedFrame;
+    private readonly Panel workspaceScroll = new() { Dock = DockStyle.Fill, AutoScroll = true, Margin = Padding.Empty };
     private TableLayoutPanel? chrome;
     private Icon? appIcon;
     private bool layingOut;
@@ -32,7 +33,7 @@ internal sealed class ScriptDialog : Form
         Text = "Host2VMRelay — 脚本工作区"; ClientSize = UiTheme.Size(1080, 780); MinimumSize = UiTheme.Size(680, 520);
         StartPosition = FormStartPosition.CenterParent; UpdateIcon(96);
         if (embedded) { TopLevel = false; FormBorderStyle = FormBorderStyle.None; MinimumSize = Size.Empty; Dock = DockStyle.Fill; }
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = UiTheme.Spacing(22), Margin = Padding.Empty };
+        var root = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, RowCount = 6, Padding = UiTheme.Spacing(22), Margin = Padding.Empty };
         chrome = root; root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (int i = 0; i < 6; i++) root.RowStyles.Add(new RowStyle(i == 2 ? SizeType.Percent : SizeType.AutoSize, i == 2 ? 100 : 0));
         var header = UiLayout.Stack();
@@ -79,13 +80,15 @@ internal sealed class ScriptDialog : Form
         root.Controls.Add(actions, 0, 3);
         status.Margin = UiTheme.Spacing(0, 8, 0, 0); root.Controls.Add(status, 0, 4);
         root.Controls.Add(UiLayout.Help("使脚本生效：" + ClashActivationGuide.Steps), 0, 5);
-        UiLayout.WrapLabels(root); Controls.Add(root);
+        UiLayout.WrapLabels(root); workspaceScroll.Controls.Add(root); Controls.Add(workspaceScroll);
         // Empty input generates a fresh script; existing input is inspected and
         // merged automatically, without a separate mode that can discard it.
         source.Text = WindowsLines(existingScript);
         copy.Enabled = save.Enabled = false;
         source.TextChanged += (_, _) => InvalidateOutput(); paste.Click += (_, _) => PasteScript(); import.Click += (_, _) => Import(); compose.Click += (_, _) => GenerateAndCopy();
-        copy.Click += (_, _) => Copy(); save.Click += (_, _) => SaveOutput(); viewport.SizeChanged += (_, _) => UpdateWorkspaceLayout();
+        copy.Click += (_, _) => Copy(); save.Click += (_, _) => SaveOutput();
+        workspaceScroll.ClientSizeChanged += (_, _) => UpdateWorkspaceLayout();
+        chrome.Layout += (_, _) => UpdateWorkspaceLayout();
         Load += (_, _) => { workspaceLayoutReady = true; UpdateIcon(DeviceDpi); if (!embedded) UiLayout.FitToScreen(this, new Size(680, 520)); UpdateWorkspaceLayout(); };
         DpiChanged += (_, e) =>
         {
@@ -112,6 +115,14 @@ internal sealed class ScriptDialog : Form
             // Ask the parent to remeasure wrapped text after compact padding or
             // DPI changes; otherwise the previous row height can be cached.
             chrome.PerformLayout(status, nameof(status.Font));
+            // Keep an editable viewport even when text and actions consume most
+            // of a small/high-DPI window. Overflow scrolls the workspace instead
+            // of squeezing the editor to zero or overlapping the action rows.
+            int fixedRows = chrome.GetRowHeights().Where((_, row) => row != 2).Sum();
+            int tabsHeight = viewport.GetRowHeights()[0];
+            int minimumHeight = chrome.Padding.Vertical + fixedRows + tabsHeight +
+                viewport.Margin.Vertical + UiTheme.Px(this, 90);
+            chrome.Height = Math.Max(workspaceScroll.ClientSize.Height, minimumHeight);
         }
         finally { layingOut = false; }
     }

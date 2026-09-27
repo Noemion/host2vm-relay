@@ -101,7 +101,7 @@ public sealed partial class MainForm
         }
     }
 
-    public void CaptureTabs(string path, float layoutScale = 1F, bool requireNativeDpi = false)
+    public void CaptureTabs(string path, float layoutScale = 1F, bool requireNativeDpi = false, bool compactViewport = false)
     {
         var audit = new UiAcceptance(path, (int)Math.Round(layoutScale * 100), requireNativeDpi);
         try
@@ -161,10 +161,16 @@ public sealed partial class MainForm
             SelectPage(0);
             int startDpi = DeviceDpi; var fonts = UiAcceptance.FontBaseline(this);
             audit.ApplyDpi(this, audit.TargetDpi); audit.VerifyFontScaling(fonts, startDpi, audit.TargetDpi);
+            if (compactViewport)
+            {
+                MinimumSize = new Size(Math.Min(MinimumSize.Width, 1024), Math.Min(MinimumSize.Height, 720));
+                Size = new Size(1024, 720); UiAcceptance.Settle(this);
+            }
             audit.Check(windowIcon?.Width == 32 * audit.TargetDpi / 96, "window icon has requested pixel size");
             audit.Check(trayIcon?.Width == 16 * audit.TargetDpi / 96, "tray icon has requested pixel size");
             bool compact = ClientSize.Width * 96.0 / DeviceDpi < Math.Max(UiTheme.Units(860), 688 * UiTheme.FontPoints / 9.6F);
             audit.Check(compactNavigation?.Visible == compact && sidebar?.Visible != compact, "navigation adapts without hiding destinations");
+            audit.Check(navigationButtons[2].Text == "Clash 接入", "Clash navigation keeps its complete caption in compact mode");
             var previousCaption = state.Text; var previousColor = state.ForeColor; var previousFeed = feed.Text;
             foreach (var health in new[] { new RelayHealth(true, false), new RelayHealth(false, false) })
             {
@@ -206,11 +212,14 @@ public sealed partial class MainForm
                 audit.Check(dialog.EditorViewportHeight >= UiTheme.Px(dialog, 90), "script viewport retains usable height in a compact window");
                 dialog.VerifyLayoutForTest(audit);
                 audit.Inspect(dialog, "script-dialog");
-                var fullSize = dialog.ClientSize;
-                dialog.ClientSize = new Size(fullSize.Width, UiTheme.Px(dialog, 520));
+                // Preserve the physical window width and only shrink it; a
+                // ClientSize assignment can change borders after injected DPI.
+                var fullBounds = dialog.Bounds;
+                dialog.Height = Math.Min(dialog.Height, UiTheme.Px(dialog, 520));
+                UiLayout.FitToScreen(dialog, new Size(680, 520));
                 UiAcceptance.Settle(dialog); dialog.VerifyLayoutForTest(audit);
                 audit.Inspect(dialog, "script-short");
-                dialog.ClientSize = fullSize; UiAcceptance.Settle(dialog);
+                dialog.Bounds = fullBounds; UiAcceptance.Settle(dialog);
                 if (!requireNativeDpi)
                 {
                     for (int round = 0; round < 3; round++)

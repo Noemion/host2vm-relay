@@ -183,6 +183,15 @@ internal sealed class NavigationButton : ActionButton
         }
     }
     public NavigationButton() { MinimumSize = UiTheme.Size(150, 46); Padding = UiTheme.Spacing(38, 10, 14, 10); }
+    public override Size GetPreferredSize(Size proposedSize)
+    {
+        var size = base.GetPreferredSize(proposedSize);
+        int caption = TextRenderer.MeasureText(Text, Font, Size.Empty, TextFormatFlags.SingleLine).Width;
+        // The icon and its gap are drawn separately from button Padding.
+        // Include both in measurement so longer captions cannot be clipped.
+        int decoration = UiTheme.Px(this, 14) + UiTheme.Px(this, 17) + UiTheme.Px(this, 10) + UiTheme.Px(this, 8);
+        return new Size(Math.Max(size.Width, caption + decoration + 2), size.Height);
+    }
     protected override Color FillColor => Selected ? UiTheme.Selection : Hot ? UiTheme.Field : UiTheme.Sidebar;
     protected override Color BorderColor => FillColor;
     protected override Color TextColor => Selected ? UiTheme.Accent : UiTheme.Muted;

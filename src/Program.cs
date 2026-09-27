@@ -45,7 +45,7 @@ internal static class Program
                 }
                 form.Shown += async (_, _) =>
                 {
-                    try { await Task.Delay(300); form.CaptureTabs(smokeOutput!, percent / 100F, native); }
+                    try { await Task.Delay(300); form.CaptureTabs(smokeOutput!, percent / 100F, native, args.Contains("--compact-viewport")); }
                     catch (Exception ex) { File.WriteAllText(Path.ChangeExtension(smokeOutput!, ".txt"), "FAIL " + ex); Environment.ExitCode = 1; }
                     finally { form.ExitForTest(); }
                 };
