@@ -101,19 +101,28 @@ internal sealed class UiAcceptance
         }
         finally { form.DpiChanged -= handler; }
     }
-    public static Dictionary<Control, int> FontBaseline(Control root) => All(root).ToDictionary(c => c, GlyphHeight);
+    internal sealed record FontSample(string Family, float Points, FontStyle Style);
+    public static Dictionary<Control, FontSample> FontBaseline(Control root) => All(root).ToDictionary(c => c,
+        c => new FontSample(c.Font.FontFamily.Name, c.Font.SizeInPoints, c.Font.Style));
     private static int GlyphHeight(Control control) => TextRenderer.MeasureText("Ag国", control.Font, Size.Empty,
         TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Height;
-    public void VerifyFontScaling(Dictionary<Control, int> baseline, int startDpi, int targetDpi)
+    public void VerifyFontScaling(Dictionary<Control, FontSample> baseline, int startDpi, int targetDpi)
     {
         foreach (var pair in baseline)
         {
             Control control = pair.Key;
             if (control.IsDisposed || !(control is Form or Label or ButtonBase or TextBoxBase or ComboBox or NumericUpDown)) continue;
-            double expected = pair.Value * (double)targetDpi / startDpi;
+            var source = pair.Value;
+            float points = source.Points * targetDpi / startDpi;
+            // Rasterized glyph heights include font hinting and integer rounding;
+            // doubling a small glyph's pixel height is not a valid font oracle.
+            using var reference = new Font(source.Family, points, source.Style, GraphicsUnit.Point);
+            int expected = TextRenderer.MeasureText("Ag国", reference, Size.Empty,
+                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Height;
             int actual = GlyphHeight(control);
-            Check(Math.Abs(actual - expected) <= Math.Max(3, expected * 0.12),
-                $"font scales for {Identity(control)}: measured={actual}px, expected~{expected:F1}px");
+            Check(Math.Abs(control.Font.SizeInPoints - points) <= .15F && control.Font.Style == source.Style
+                && control.Font.FontFamily.Name == source.Family && Math.Abs(actual - expected) <= 1,
+                $"font scales for {Identity(control)}: points={control.Font.SizeInPoints:F2}/{points:F2}, measured={actual}px, expected={expected}px");
         }
     }
     public void Inspect(Form form, string name)
