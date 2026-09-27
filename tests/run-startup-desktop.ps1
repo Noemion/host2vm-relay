@@ -2,7 +2,9 @@ param(
     [Parameter(Mandatory)][string]$Dotnet,
     [Parameter(Mandatory)][string]$Assembly,
     [Parameter(Mandatory)][string]$Output,
-    [ValidateSet('Startup','Layout')][string]$Mode = 'Startup'
+    [ValidateSet('Startup','Layout')][string]$Mode = 'Startup',
+    [ValidateSet(100,125,150,175,200)][int]$ScalePercent = 200,
+    [switch]$SimulateDpi
 )
 $ErrorActionPreference = 'Stop'
 # Never switch the input desktop. The diagnostic owns and closes only its child.
@@ -53,7 +55,10 @@ $runtimePath = (Resolve-Path -LiteralPath $Dotnet).Path
 $assemblyPath = (Resolve-Path -LiteralPath $Assembly).Path
 $outputPath = [IO.Path]::GetFullPath($Output)
 if (($runtimePath + $assemblyPath + $outputPath).Contains('"')) { throw 'Quotes are not allowed in diagnostic paths.' }
-$checkArgument = if ($Mode -eq 'Startup') { '--startup-check' } else { '--smoke --native-dpi --ui-scale=200' }
+$checkArgument = if ($Mode -eq 'Startup') { '--startup-check' } else {
+    $nativeArgument = if ($SimulateDpi) { '' } else { ' --native-dpi' }
+    "--smoke$nativeArgument --ui-scale=$ScalePercent"
+}
 $command = '"' + $runtimePath + '" exec "' + $assemblyPath + '" ' + $checkArgument + ' "' + $outputPath + '"'
 $code = [IsolatedStartupDesktop]::Run($command, $PWD.Path)
 $resultPath = if ($Mode -eq 'Layout') { [IO.Path]::ChangeExtension($outputPath, '.json') } else { $outputPath }

@@ -61,8 +61,14 @@ internal static class SelfTest
                     states.Add(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(encoded.ToArray())));
                     Check(statusIcon.Width == size && statusIcon.Height == size, "status icon dimensions " + state + " " + size);
                 }
-                Check(states.Count == 4, "connection status icons are visually distinct at " + size);
+                Check(states.Count == Enum.GetValues<ConnectionIconState>().Length, "connection status icons are visually distinct at " + size);
             }
+            var failed = ConnectionPresentation.Create(false, new RelayHealth(true, true), true, "认证失败");
+            Check(failed.Icon == ConnectionIconState.Failed && failed.Caption.Contains("连接失败") && failed.Details == "认证失败", "closed SSH overrides stale healthy leases and preserves the failure reason");
+            var partial = ConnectionPresentation.Create(true, new RelayHealth(true, false), true, "虚拟机拒绝执行");
+            Check(partial.Icon == ConnectionIconState.Degraded && partial.Caption.Contains("UDP 连接失败") && partial.Details.Contains("拒绝执行"), "UDP failure is explicit while a working TCP path remains available");
+            Check(ConnectionPresentation.Create(true, new RelayHealth(true, false), false, null).Icon == ConnectionIconState.Connected, "disabled UDP is not reported as a failure");
+            Check(ConnectionPresentation.Create(true, new RelayHealth(true, true), true, null).Key == "both", "recovered UDP returns the status to connected");
             Check(ClashScript.Generate(1080, "192.168.50.8").Contains("IP-CIDR,192.168.50.8/32,DIRECT"), "custom VM IPv4 bypass");
             Check(ClashScript.Generate(1080, "fd00::8").Contains("IP-CIDR6,fd00::8/128,DIRECT"), "custom VM IPv6 bypass");
             foreach (int invalid in new[] { 0, 65536 })

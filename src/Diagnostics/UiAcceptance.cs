@@ -230,7 +230,44 @@ internal sealed class UiAcceptance
         for (int i = 0; i < 3; i++) { form.PerformLayout(); Application.DoEvents(); }
         form.Refresh();
     }
-    private void Screenshot(Form form, string name)
+    public void InspectTrayMenu(Form owner, bool dark)
+    {
+        stage = dark ? "tray-dark" : "tray-light";
+        using var menu = new TrayMenu(dark) { Font = owner.Font };
+        menu.Items.Add("打开主窗口");
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("连接虚拟机");
+        menu.Items.Add("断开连接").Enabled = false;
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("退出");
+        menu.Show(owner, new Point(owner.ClientSize.Width / 3, owner.ClientSize.Height / 3));
+        Settle(menu);
+        Check(menu.Visible, "tray menu opens");
+        Check(Screen.FromHandle(menu.Handle).WorkingArea.Contains(menu.Bounds), "tray menu fits monitor");
+        if (!SystemInformation.HighContrast)
+            Check((menu.BackColor.GetBrightness() < .5F) == dark, "requested menu palette is active");
+        var actions = menu.Items.OfType<ToolStripMenuItem>().ToArray();
+        int widestCaption = actions.Max(item => TextRenderer.MeasureText(item.Text, item.Font).Width + item.Padding.Horizontal);
+        Check(menu.ClientSize.Width <= widestCaption + menu.Padding.Horizontal + 2, "menu width follows captions without a reserved blank column");
+        foreach (var item in actions)
+        {
+            var text = TextRenderer.MeasureText(item.Text, item.Font);
+            Check(item.Width >= text.Width + item.Padding.Horizontal, "menu caption fits: " + item.Text);
+            Check(item.Height >= text.Height + item.Padding.Vertical - 2, "menu row has comfortable spacing: " + item.Text);
+            Check(item.Width == menu.ClientSize.Width - menu.Padding.Horizontal, "menu action fills available width: " + item.Text);
+        }
+        actions[0].Select();
+        menu.ProcessKeyForTest(Keys.Down);
+        Settle(menu);
+        Check(actions[1].Selected && !actions[2].Enabled, "selection and disabled actions retain native state");
+        Screenshot(menu, stage + ".png");
+        menu.ProcessKeyForTest(Keys.Down);
+        Check(actions[3].Selected, "keyboard navigation skips disabled actions and separators");
+        menu.ProcessKeyForTest(Keys.Escape);
+        Check(!menu.Visible, "menu closes without executing an action");
+    }
+
+    private void Screenshot(Control form, string name)
     {
         form.Refresh(); Application.DoEvents(); Thread.Sleep(80);
         using var bitmap = new Bitmap(form.Width, form.Height);

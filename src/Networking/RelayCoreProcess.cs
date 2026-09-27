@@ -188,7 +188,13 @@ internal sealed class RelayCoreProcess : IDisposable
             await AuthenticateAsync(stream, Capability, deadline.Token).ConfigureAwait(false);
             await stream.WriteAsync(new byte[] { 5, 0xf0, 0, 1, 0, 0, 0, 0, 0, 0 }, deadline.Token).ConfigureAwait(false);
             byte[] response = new byte[10]; await stream.ReadExactlyAsync(response, deadline.Token).ConfigureAwait(false);
-            if (response[0] != 5 || response[1] != 0) throw new IOException("无法启动虚拟机 UDP 组件。");
+            if (response[0] != 5) throw new IOException("UDP 组件启动响应无效。");
+            if (response[1] != 0) throw new IOException(response[1] switch
+            {
+                2 => "虚拟机拒绝执行 UDP 辅助程序，请在虚拟机安全中心确认并允许该程序。",
+                6 => "UDP 辅助程序启动超时，请检查虚拟机是否正在等待安全授权。",
+                _ => "UDP 辅助程序未能启动，请检查虚拟机的执行权限及安全授权。"
+            });
             return await UdpTunnel.OpenStreamsAsync(stream, stream, socket.Dispose, deadline.Token).ConfigureAwait(false);
         }
         catch { socket.Dispose(); throw; }

@@ -21,13 +21,15 @@ public sealed partial class MainForm : Form
     private readonly Button connect = UiLayout.Primary("连接虚拟机", 160), disconnect = UiLayout.Button("断开", 90);
     private readonly Label state = new StatusBadge { Text = "● 未连接", ForeColor = Color.DimGray }, feed = UiLayout.Help("Clash 本地规则 · 未启用");
     private readonly NotifyIcon tray = new() { Text = "虚拟机未连接" };
+    private readonly ToolTip connectionTip = new() { AutoPopDelay = 15000, InitialDelay = 300, ReshowDelay = 100 };
+    private string? connectionFailureReason;
     private Icon? windowIcon, trayIcon;
     private ConnectionIconState connectionIconState = ConnectionIconState.Disconnected;
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 3000 };
     private bool busy, wanted, quitting;
     private DateTime nextRetry;
     private string existingClashScript = "";
-    private readonly TabControl tabs = new WorkspaceTabs();
+    private readonly PageHost pages = new();
 
     public MainForm()
     {
@@ -47,16 +49,22 @@ public sealed partial class MainForm : Form
         catch { Log("保存的密码无法在当前 Windows 用户下解密，请重新输入。"); }
         try { ClashRuleFile.Disable(); ClashRuleRefresh.Request(Log); }
         catch (Exception ex) { Log("无法初始化 Clash 本地规则文件：" + ex.Message); }
-        var menu = new ContextMenuStrip { Font = Font };
+        var menu = new TrayMenu { Font = Font };
         menu.Items.Add("打开主窗口", null, (_, _) => Restore());
-        menu.Items.Add("连接", null, async (_, _) => { if (!busy && session?.IsConnected != true) await Connect(); });
-        menu.Items.Add("断开", null, async (_, _) => await Stop());
+        menu.Items.Add(new ToolStripSeparator());
+        var trayConnect = menu.Items.Add("连接虚拟机", null, async (_, _) => { if (!busy && session?.IsConnected != true) await Connect(); });
+        var trayDisconnect = menu.Items.Add("断开连接", null, async (_, _) => await Stop());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) =>
         {
             if (busy) { Restore(); feed.Text = "正在连接，请等待本次连接完成后退出。"; return; }
             quitting = true; Close();
         });
+        menu.Opening += (_, _) =>
+        {
+            trayConnect.Enabled = !busy && !polling && session?.IsConnected != true;
+            trayDisconnect.Enabled = !busy && (session is not null || wanted);
+        };
         tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => Restore(); tray.Visible = true;
         connect.Click += async (_, _) => await Connect(); disconnect.Click += async (_, _) => await Stop();
         FormClosing += (_, e) =>
@@ -73,7 +81,7 @@ public sealed partial class MainForm : Form
             _ = formLifetime.CancelAsync();
             _ = Cleanup(); TryDisableRules();
             logTimer.Stop(); logTimer.Dispose();
-            tray.Dispose(); menu.Dispose(); timer.Dispose(); windowIcon?.Dispose(); trayIcon?.Dispose();
+            tray.Dispose(); connectionTip.Dispose(); menu.Dispose(); timer.Dispose(); windowIcon?.Dispose(); trayIcon?.Dispose();
         };
         timer.Tick += async (_, _) => await PollNetworkAsync();
         Shown += (_, _) => Log("已初始化 Clash 本地规则。先连接虚拟机，再到“Clash 接入”生成完整扩展脚本。");

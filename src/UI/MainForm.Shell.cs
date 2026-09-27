@@ -49,20 +49,20 @@ public sealed partial class MainForm
         state.Anchor = AnchorStyles.Top | AnchorStyles.Right; state.Margin = UiTheme.Spacing(12, 6, 0, 0);
         header.Controls.Add(pageTitle, 0, 0); header.Controls.Add(state, 1, 0);
         header.Controls.Add(pageDescription, 0, 1); header.SetColumnSpan(pageDescription, 2); UiLayout.WrapLabels(header);
-        contentArea.Controls.Add(header, 0, 0); contentArea.Controls.Add(tabs, 0, 1);
+        contentArea.Controls.Add(header, 0, 0); contentArea.Controls.Add(pages, 0, 1);
         feed.Margin = UiTheme.Spacing(0, 10, 0, 0); contentArea.Controls.Add(feed, 0, 2); UiLayout.WrapLabels(contentArea);
         shellBody.Controls.Add(sidebar, 0, 0); shellBody.Controls.Add(contentArea, 1, 0);
         outer.Controls.Add(compactNavigation, 0, 0); outer.Controls.Add(shellBody, 0, 1); Controls.Add(outer);
-        tabs.SelectedIndexChanged += (_, _) => RefreshNavigation(); SizeChanged += (_, _) => UpdateShellLayout();
+        pages.SelectedIndexChanged += (_, _) => RefreshNavigation(); SizeChanged += (_, _) => UpdateShellLayout();
         FormClosed += (_, _) => { brandImage.Image?.Dispose(); brandImage.Image = null; }; UpdateShellLayout();
     }
     private void SelectPage(int index)
     {
-        if (index < 0 || index >= tabs.TabCount) return; tabs.SelectedIndex = index; RefreshNavigation();
+        if (index < 0 || index >= pages.PageCount) return; pages.SelectedIndex = index; RefreshNavigation();
     }
     private void RefreshNavigation()
     {
-        int index = tabs.SelectedIndex;
+        int index = pages.SelectedIndex;
         if (index < 0 || pageTitle is null || pageDescription is null) return;
         pageTitle.Text = PageTitles[index]; pageDescription.Text = PageDescriptions[index];
         foreach (var button in navigationButtons) button.Selected = button.PageIndex == index;
@@ -100,8 +100,8 @@ public sealed partial class MainForm
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         for (int i = 0; i < PageTitles.Length; i++) if (keyData == (Keys.Alt | (Keys)((int)Keys.D1 + i))) { SelectPage(i); return true; }
-        if (keyData == (Keys.Control | Keys.Tab)) { SelectPage((tabs.SelectedIndex + 1) % tabs.TabCount); return true; }
-        if (keyData == (Keys.Control | Keys.Shift | Keys.Tab)) { SelectPage((tabs.SelectedIndex + tabs.TabCount - 1) % tabs.TabCount); return true; }
+        if (keyData == (Keys.Control | Keys.Tab)) { SelectPage((pages.SelectedIndex + 1) % pages.PageCount); return true; }
+        if (keyData == (Keys.Control | Keys.Shift | Keys.Tab)) { SelectPage((pages.SelectedIndex + pages.PageCount - 1) % pages.PageCount); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 }

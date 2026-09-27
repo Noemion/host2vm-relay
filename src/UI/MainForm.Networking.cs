@@ -31,11 +31,13 @@ public sealed partial class MainForm
     {
         if (busy || polling) return;
         try { SaveConnection(); }
-        catch (Exception ex) { if (!automatic) Error(ex); wanted = false; return; }
+        catch (Exception ex) { wanted = false; connectionFailureReason = ex.Message; PresentPath(ex.Message); Error(ex); return; }
+        connectionFailureReason = null;
         busy = true;
         wanted = true;
         SetConnectionControls(true);
         state.Text = "● 正在连接…";
+        connectionTip.SetToolTip(state, "正在连接虚拟机并检查转发组件。");
         SetConnectionIcon(ConnectionIconState.Connecting, "正在连接虚拟机");
         state.ForeColor = Color.FromArgb(145, 83, 0);
         string endpoint = settings.Host + ":" + settings.Port;
@@ -79,7 +81,8 @@ public sealed partial class MainForm
             connected.StartMonitoring(retry.Checked);
             ApplyRouteFiles();
             PresentPath();
-            Log("中继已连接：127.0.0.1:" + settings.SocksPort + " → " + endpoint);
+            Log((settings.EnableUdp && !connected.Health.Udp ? "TCP 中继已连接，UDP 连接失败：" : "中继已连接：") +
+                "127.0.0.1:" + settings.SocksPort + " → " + endpoint);
         }
         catch (Exception ex)
         {
@@ -167,13 +170,22 @@ public sealed partial class MainForm
         connectionLoad.Text = load is { } usage
             ? $"当前转发 {usage.Active} / {usage.Limit} · 本次连接累计过载拒绝 {usage.Rejected} 次"
             : "当前无转发连接。";
-        bool tcp = session?.Health.Tcp == true, udp = session?.Health.Udp == true && settings.EnableUdp;
-        string key = tcp ? (udp ? "both" : settings.EnableUdp ? "tcp-only" : "tcp") : "host";
-        SetConnectionIcon(!tcp ? ConnectionIconState.Disconnected : settings.EnableUdp && !udp ? ConnectionIconState.Degraded : ConnectionIconState.Connected,
-            !tcp ? "虚拟机未连接" : udp ? "虚拟机已连接 · TCP / UDP" : settings.EnableUdp ? "虚拟机已连接 · UDP 未就绪" : "虚拟机已连接 · TCP");
-        state.Text = tcp ? udp ? "● 已连接 · TCP / UDP" : settings.EnableUdp ? "● 仅 TCP · UDP 未就绪" : "● 已连接 · TCP" : "● 已回退 · 宿主机";
-        state.ForeColor = key is "host" or "tcp-only" ? Color.FromArgb(145, 83, 0) : Color.FromArgb(20, 105, 70);
-        feed.Text = tcp ? udp ? "TCP / UDP 优先虚拟机 · 不可用时回退原有分流" : "TCP 经虚拟机 · UDP 使用宿主机原有分流" : "已请求回退宿主机原有分流 · 新连接自动生效";
+        if (reason is not null) connectionFailureReason ??= reason;
+        var health = session?.Health ?? new RelayHealth(false, false);
+        var presentation = ConnectionPresentation.Create(session?.IsConnected == true, health, settings.EnableUdp,
+            health.Tcp ? session?.UdpError : connectionFailureReason);
+        string key = presentation.Key;
+        SetConnectionIcon(presentation.Icon, presentation.TrayText);
+        state.Text = presentation.Caption; state.ForeColor = presentation.Color;
+        state.AccessibleDescription = presentation.Details;
+        connectionTip.SetToolTip(state, presentation.Details);
+        string details = presentation.Details.Length > 160 ? presentation.Details[..160] + "…" : presentation.Details;
+        feed.Text = key switch
+        {
+            "host" => "连接失败：" + details + (retry.Checked && wanted ? " 将自动重试。" : ""),
+            "tcp-only" => "UDP 连接失败：" + details,
+            _ => details
+        };
         if (lastPath == key) return;
         string message = key switch
         {
@@ -216,6 +228,7 @@ public sealed partial class MainForm
             if (IsDisposed) return;
             lastPath = "host";
             state.Text = "● 已断开"; state.ForeColor = Color.DimGray; feed.Text = "宿主机原有分流 · 虚拟机中继已停用";
+            connectionFailureReason = null; connectionTip.SetToolTip(state, "已主动断开，不会自动重连。");
             connectionLoad.Text = "当前无转发连接。";
             SetConnectionIcon(ConnectionIconState.Disconnected, "虚拟机已断开");
             Log($"已主动断开，清理耗时 {elapsed.Elapsed.TotalSeconds:F1} 秒；不会自动重连。");

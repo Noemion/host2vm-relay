@@ -24,6 +24,8 @@ internal sealed class RelaySession : IDisposable
     private Task? udpStart;
     private long nextUdpRetry;
     private bool disposed;
+    private string? udpError;
+    public string? UdpError => Volatile.Read(ref udpError);
     private readonly TaskCompletionSource disposalCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal Task DisposalCompleted => disposalCompleted.Task;
     private int monitoring;
@@ -52,7 +54,7 @@ internal sealed class RelaySession : IDisposable
         }
     }
 
-    public RelayHealth Health => new(relay.TcpHealthy, relay.UdpHealthy);
+    public RelayHealth Health => IsConnected ? new(relay.TcpHealthy, relay.UdpHealthy) : new(false, false);
     internal int SocksPort => relay.Port;
     public (int Active, int Limit, long Rejected) Load => (relay.ActiveTransfers, relay.TransferLimit, relay.RejectedConnections);
     public bool IsConnected { get { lock (gate) return !disposed && core.IsConnected; } }
@@ -105,6 +107,7 @@ internal sealed class RelaySession : IDisposable
                 if (!disposed)
                 {
                     udp = candidate;
+                    Volatile.Write(ref udpError, null);
                     Publish();
                 }
             }
@@ -113,7 +116,10 @@ internal sealed class RelaySession : IDisposable
         catch (Exception ex)
         {
             if (!lifetime.IsCancellationRequested)
+            {
+                Volatile.Write(ref udpError, ex.Message);
                 log("WARNING UDP 组件不可用，UDP 将使用宿主机原有分流：" + ex.Message);
+            }
         }
         finally { lock (gate) nextUdpRetry = Environment.TickCount64 + 15000; }
     }
@@ -141,6 +147,7 @@ internal sealed class RelaySession : IDisposable
                     if (ReferenceEquals(udp, tested))
                     {
                         udp = null;
+                        Volatile.Write(ref udpError, tested.LastError);
                         nextUdpRetry = Environment.TickCount64 + 15000;
                     }
                 }

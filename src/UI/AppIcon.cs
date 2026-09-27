@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace Host2VMRelay;
 
-internal enum ConnectionIconState { Disconnected, Connecting, Connected, Degraded }
+internal enum ConnectionIconState { Disconnected, Connecting, Connected, Degraded, Failed }
 
 internal static class AppIcon
 {
@@ -25,6 +25,7 @@ internal static class AppIcon
                 ConnectionIconState.Connected => Color.FromArgb(22, 155, 91),
                 ConnectionIconState.Connecting => Color.FromArgb(205, 141, 20),
                 ConnectionIconState.Degraded => Color.FromArgb(193, 106, 15),
+                ConnectionIconState.Failed => Color.FromArgb(173, 49, 43),
                 _ => Color.FromArgb(105, 116, 124)
             };
             using var fill = new SolidBrush(color);
@@ -44,6 +45,11 @@ internal static class AppIcon
             {
                 graphics.DrawLine(glyph, P(.5F, .23F), P(.5F, .52F));
                 graphics.DrawLine(glyph, P(.5F, .73F), P(.5F, .75F));
+            }
+            else if (state == ConnectionIconState.Failed)
+            {
+                graphics.DrawLine(glyph, P(.3F, .3F), P(.7F, .7F));
+                graphics.DrawLine(glyph, P(.3F, .7F), P(.7F, .3F));
             }
             else graphics.DrawLine(glyph, P(.28F, .5F), P(.72F, .5F));
         }

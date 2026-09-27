@@ -68,7 +68,7 @@ class Core:
         result = await self.read()
         check(result.get('ok'), 'control request ' + op, result=result)
 
-    async def open(self, port=0, op=1, token=None):
+    async def open(self, port=0, op=1, token=None, expected_reply=0):
         reader, writer = await asyncio.open_connection('127.0.0.1', self.port)
         writer.write(b'\x05\x01\x02')
         assert await reader.readexactly(2) == b'\x05\x02'
@@ -79,6 +79,10 @@ class Core:
             writer.close(); await writer.wait_closed(); return None
         writer.write(bytes([5, op, 0, 1, 127, 0, 0, 1]) + struct.pack('!H', port))
         reply = await reader.readexactly(10)
+        if expected_reply:
+            writer.close(); await writer.wait_closed()
+            check(reply[1] == expected_reply, 'blocked UDP executable reports permission failure before SOCKS success')
+            return None
         if reply[1]:
             writer.close(); await writer.wait_closed(); raise AssertionError('forwarding rejected')
         return reader, writer
@@ -132,6 +136,22 @@ async def scenario(port, user, key, encrypted, password):
     for auth_key, secret in [(None, password), (encrypted, 'test-passphrase')]:
         core = await Core().start(port, user, auth_key, secret)
         await core.request('probe'); await core.close()
+    core = await Core().start(port, user, key)
+    try:
+        await core.request('udp')
+        digest = hashlib.sha256((BUNDLE / 'h2vm-agent-linux-x64').read_bytes()).hexdigest()
+        agent = key.parent / 'home' / '.cache/host2vm-relay' / digest / 'agent'
+        # This is only the ephemeral test account's cached executable. Revoking
+        # its execute bit reproduces exec status 126 without changing KYSEC.
+        agent.chmod(0o600)
+        try:
+            await asyncio.wait_for(core.open(op=0xf0, expected_reply=2), 5)
+        finally:
+            agent.chmod(0o700)
+        await udp_test(core)
+        check(True, 'UDP recovers after execution is allowed without restarting SSH')
+    finally:
+        await core.close()
     async def echo(reader, writer):
         try:
             while data := await reader.read(32768):

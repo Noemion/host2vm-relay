@@ -6,9 +6,10 @@ public sealed partial class MainForm
 {
     private TableLayoutPanel PageContent(string title)
     {
-        var page = new TabPage(title) { BackColor = UiTheme.Canvas, Padding = UiTheme.Spacing(2, 2, 10, 2) };
+        var page = new Panel { Text = title, AccessibleName = title, AccessibleRole = AccessibleRole.Pane,
+            BackColor = UiTheme.Canvas, Padding = UiTheme.Spacing(2, 2, 10, 2) };
         var stack = UiLayout.Stack(); stack.BackColor = UiTheme.Canvas;
-        page.Controls.Add(new PageScrollPanel(stack)); tabs.TabPages.Add(page); return stack;
+        page.Controls.Add(new PageScrollPanel(stack)); pages.AddPage(page); return stack;
     }
     private void BuildConnection()
     {
@@ -103,6 +104,7 @@ public sealed partial class MainForm
     {
         var page = PageContent("Clash 接入");
         var quickCopy = UiLayout.Primary("生成并复制", 150); var mergeScript = UiLayout.Button("合并已有脚本", 170);
+        mergeScript.Name = "openScriptWorkspace";
         var scriptFeedback = UiLayout.Help("");
         quickCopy.Click += (_, _) =>
         {

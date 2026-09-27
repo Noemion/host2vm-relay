@@ -12,6 +12,58 @@ use tokio::{
     time::timeout,
 };
 
+#[derive(Debug)]
+struct AgentExit(u32);
+impl std::fmt::Display for AgentExit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "UDP helper exited with status {}", self.0)
+    }
+}
+impl std::error::Error for AgentExit {}
+
+struct PendingAgent(Option<russh::Channel<russh::client::Msg>>);
+impl Drop for PendingAgent {
+    fn drop(&mut self) {
+        // A cancelled or rejected startup must release the exec channel too.
+        drop(self.0.take().map(|channel| channel.into_stream()));
+    }
+}
+
+async fn start_agent(
+    ssh: &Ssh,
+    command: String,
+) -> Result<(russh::Channel<russh::client::Msg>, Vec<u8>)> {
+    let mut pending = PendingAgent(Some(ssh.channel_open_session().await?));
+    let channel = pending.0.as_mut().unwrap();
+    channel.exec(true, command).await?;
+    let magic = b"Host2VMRelay-UDP/1";
+    let mut expected = ((5 + magic.len()) as u32).to_be_bytes().to_vec();
+    expected.extend_from_slice(b"H\0\0\0\0");
+    expected.extend_from_slice(magic);
+    let mut first = Vec::new();
+    while let Some(message) = channel.wait().await {
+        match message {
+            russh::ChannelMsg::Data { data } => {
+                ensure!(first.len() + data.len() <= 66048, "invalid UDP greeting");
+                first.extend_from_slice(&data);
+                let compared = first.len().min(expected.len());
+                ensure!(
+                    first[..compared] == expected[..compared],
+                    "invalid UDP greeting"
+                );
+                if first.len() >= expected.len() {
+                    return Ok((pending.0.take().unwrap(), first));
+                }
+            }
+            russh::ChannelMsg::ExitStatus { exit_status } => {
+                return Err(AgentExit(exit_status).into());
+            }
+            _ => {} // Never mix remote stderr with the binary protocol.
+        }
+    }
+    bail!("UDP helper closed before its greeting")
+}
+
 async fn authenticate(socket: &mut TcpStream, token: &str) -> Result<()> {
     ensure!(socket.read_u8().await? == 5, "invalid protocol");
     let n = socket.read_u8().await? as usize;
@@ -77,11 +129,12 @@ pub async fn serve(
     let opened = timeout(Duration::from_secs(10), async {
         authenticate(&mut socket, &config.token).await?;
         let (op, host, port) = request(&mut socket).await?;
-        let (channel, permit) = match op {
+        let (channel, permit, greeting) = match op {
             1 => (
                 ssh.channel_open_direct_tcpip(host, port as u32, "127.0.0.1", 0)
                     .await?,
                 None,
+                Vec::new(),
             ),
             0xf0 => {
                 let permit = udp.try_acquire_owned()?;
@@ -90,28 +143,43 @@ pub async fn serve(
                     .await
                     .clone()
                     .ok_or_else(|| anyhow::anyhow!("UDP helper not prepared"))?;
-                let channel = ssh.channel_open_session().await?;
-                channel.exec(true, command).await?;
-                (channel, Some(permit))
+                // Exec acknowledgement is not proof that the program ran:
+                // security policy may reject it afterwards with exit 126.
+                let (channel, greeting) = start_agent(&ssh, command).await?;
+                (channel, Some(permit), greeting)
             }
             _ => bail!("unsupported command"),
         };
-        Ok::<_, anyhow::Error>((channel, permit))
+        Ok::<_, anyhow::Error>((channel, permit, greeting))
     })
     .await;
-    let (channel, _permit) = match opened {
+    let (channel, _permit, greeting) = match opened {
         Ok(Ok(value)) => value,
-        _ => {
+        failure => {
+            let code = match failure {
+                Ok(Err(error))
+                    if error
+                        .downcast_ref::<AgentExit>()
+                        .is_some_and(|e| e.0 == 126) =>
+                {
+                    2
+                }
+                Err(_) => 6,
+                _ => 1,
+            };
             let _ = timeout(
                 Duration::from_secs(1),
-                socket.write_all(&[5, 1, 0, 1, 127, 0, 0, 1, 0, 0]),
+                socket.write_all(&[5, code, 0, 1, 127, 0, 0, 1, 0, 0]),
             )
             .await;
             return Ok(());
         }
     };
-    socket.write_all(&[5, 0, 0, 1, 127, 0, 0, 1, 0, 0]).await?;
     let mut stream = channel.into_stream();
+    socket.write_all(&[5, 0, 0, 1, 127, 0, 0, 1, 0, 0]).await?;
+    if !greeting.is_empty() {
+        socket.write_all(&greeting).await?;
+    }
     // copy_bidirectional preserves EOF independently: request half-close must
     // not discard a server response. Buffers are fixed, backpressure is awaited.
     tokio::io::copy_bidirectional_with_sizes(&mut socket, &mut stream, 32768, 32768).await?;

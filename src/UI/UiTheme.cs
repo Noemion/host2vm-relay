@@ -248,13 +248,3 @@ internal sealed class StatusBadge : Label
         e.Graphics.FillPath(fill, shape); e.Graphics.DrawPath(border, shape);
     }
 }
-
-internal sealed class WorkspaceTabs : TabControl
-{
-    public WorkspaceTabs() { Dock = DockStyle.Fill; Margin = System.Windows.Forms.Padding.Empty; Padding = Point.Empty; TabStop = false; }
-    protected override void WndProc(ref Message m)
-    {
-        if (m.Msg == 0x1328 && !DesignMode) { m.Result = IntPtr.Zero; return; }
-        base.WndProc(ref m);
-    }
-}
