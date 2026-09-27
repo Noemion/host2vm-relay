@@ -20,7 +20,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox remember = new() { Text = "加密保存凭据", AutoSize = true }, retry = new() { Text = "断线后自动重连", AutoSize = true };
     private readonly Button connect = UiLayout.Primary("连接虚拟机", 160), disconnect = UiLayout.Button("断开", 90);
     private readonly Label state = new StatusBadge { Text = "● 未连接", ForeColor = Color.DimGray }, feed = UiLayout.Help("Clash 本地规则 · 未启用");
-    private readonly NotifyIcon tray = new() { Text = "Host2VMRelay · 虚拟机未连接" };
+    private readonly NotifyIcon tray = new() { Text = "虚拟机未连接" };
     private Icon? windowIcon, trayIcon;
     private ConnectionIconState connectionIconState = ConnectionIconState.Disconnected;
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 3000 };
@@ -131,7 +131,7 @@ public sealed partial class MainForm : Form
     }
     private void SetConnectionIcon(ConnectionIconState next, string description)
     {
-        tray.Text = "Host2VMRelay · " + description;
+        tray.Text = description;
         if (connectionIconState == next) return;
         connectionIconState = next;
         UpdateIcons(DeviceDpi);
