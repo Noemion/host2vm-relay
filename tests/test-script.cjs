@@ -2,8 +2,6 @@
 const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert/strict');
-const path = require('path');
-const root = path.join(__dirname, '..');
 function execute(source, config) {
   const context = vm.createContext({});
   vm.runInContext(source, context, {timeout: 1000});
@@ -11,7 +9,7 @@ function execute(source, config) {
   return vm.runInContext('main(input,"test")', context, {timeout: 1000});
 }
 const base = () => ({proxies: [{name: 'old', type: 'mieru', udp: false}], rules: ['MATCH,DIRECT'], dns: {'fake-ip-filter': ['+.lan', '*.local', 'exact.example']}});
-const fixture = process.argv[3];
+const fixture = process.argv[2];
 assert(fixture && fs.existsSync(fixture), 'Run the C# self-test to create script-cases.json first');
 const scripts = JSON.parse(fs.readFileSync(fixture, 'utf8'));
 for (const mode of ['blacklist', 'whitelist', 'rule']) {
@@ -101,10 +99,5 @@ checkTun('repeated merged script application is stable', () => {
   assert.deepEqual(json(execute(script, output)), expected);
 });
 console.log('PASS ' + tunChecks + ' managed TUN regression cases');
-const config = execute(scripts.empty, {'mixed-port':17891,mode:'rule','log-level':'info',dns:{enable:true,listen:'127.0.0.1:10553',nameserver:['1.1.1.1'],'fake-ip-filter':['+.lan','*.local']},rules:['MATCH,DIRECT']});
-config.tun = {...(config.tun ?? {}), enable:false};
-for (const name of ['host2vm-relay-rules','host2vm-relay-udp-rules']) config['rule-providers'][name]={type:'inline',behavior:'classical',payload:['DOMAIN,code.example.com','IP-CIDR,10.20.30.40/32,no-resolve']};
-const output = process.argv[2] || path.join(root,'artifacts/checks/mihomo.json');
-fs.mkdirSync(path.dirname(path.resolve(output)),{recursive:true}); fs.writeFileSync(output,JSON.stringify(config,null,2));
 console.log('PASS script composition, preserved helpers, Unicode, return modes, failure propagation, wrapper regeneration, migration, DNS, idempotence and original-policy fallback configuration');
 console.log('PASS executed actual C# generator output for every script case');

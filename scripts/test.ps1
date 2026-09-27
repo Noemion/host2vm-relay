@@ -20,7 +20,7 @@ function Invoke-AppCheck {
 }
 $resultPath = Join-Path $checks 'self-test.txt'
 Invoke-AppCheck "--self-test `"$resultPath`"" $resultPath
-& node (Join-Path $repoRoot 'tests\test-script.cjs') (Join-Path $checks 'mihomo.json') (Join-Path $checks 'script-cases.json')
+& node (Join-Path $repoRoot 'tests\test-script.cjs') (Join-Path $checks 'script-cases.json')
 if ($LASTEXITCODE -ne 0) { throw 'JavaScript regression tests failed.' }
 & node (Join-Path $repoRoot 'tests\test-incremental.cjs') (Join-Path $checks 'incremental-cases.json')
 if ($LASTEXITCODE -ne 0) { throw 'Incremental script upgrade tests failed.' }

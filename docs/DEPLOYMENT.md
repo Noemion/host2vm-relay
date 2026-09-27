@@ -2,7 +2,7 @@
 
 ## Windows 客户端
 
-运行 `Host2VMRelay-0.6.1-win-universal-Setup.exe`。安装器携带 x64、x86、ARM64 三套程序并按系统选择；便携 ZIP 则按架构分别提供。应用依赖和 .NET 桌面运行时以 self-contained single-file 方式包含在 EXE 内，使用者无需编译，也无需在 Windows 安装 Python 或 Node.js。不是可脱离 Windows 的完全静态原生程序；临时目录需要可写。程序和安装包目前未签名。
+运行 `Host2VMRelay-0.6.2-win-universal-Setup.exe`。安装器携带 x64、x86、ARM64 三套程序并按系统选择；便携 ZIP 则按架构分别提供。应用依赖和 .NET 桌面运行时以 self-contained single-file 方式包含在 EXE 内，使用者无需编译，也无需在 Windows 安装 Python 或 Node.js。不是可脱离 Windows 的完全静态原生程序；临时目录需要可写。程序和安装包目前未签名。
 
 安装器使用当前用户权限。升级前从托盘退出旧程序；检测到同一用户的旧安装时先卸载后安装，保留配置文件和目录定位信息。Setup 的文件名明确标注 universal，不能把它误认为单个 AnyCPU 原生二进制。
 

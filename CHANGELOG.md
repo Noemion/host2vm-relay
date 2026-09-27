@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2 — Remove obsolete DNS test scaffolding
+
+- 删除没有入口调用、已由 TUN 端到端验收覆盖的独立 DNS 检查，以及脚本回归中不再使用的 Mihomo 配置输出。
+- 保持 v0.6.1 的网络、配置和架构修复不变；继续通过同一发布验收流程。
+
+
 ## 0.6.1 — Transport reliability and maintainability
 
 - 修复 TCP 单方向异常后另一方向等待造成的连接槽位泄漏，保留正常半关闭响应。

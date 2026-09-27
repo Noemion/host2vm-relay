@@ -1,4 +1,6 @@
-# Host2VMRelay v0.6.1
+# Host2VMRelay v0.6.2
+
+相较 v0.6.1，本版仅移除已被端到端验收覆盖的旧独立 DNS 检查及无用的配置输出，保留同一组网络与配置修复。
 
 ## 本次修复
 
@@ -11,7 +13,7 @@
 
 ## 安装与升级
 
-下载 `Host2VMRelay-0.6.1-win-universal-Setup.exe`，或对应 x64、x86、ARM64 的便携 ZIP。Windows 运行时和依赖已包含，无需安装 .NET、Python 或 Node.js。先从托盘退出旧程序再升级，现有配置与配置目录定位文件保留。
+下载 `Host2VMRelay-0.6.2-win-universal-Setup.exe`，或对应 x64、x86、ARM64 的便携 ZIP。Windows 运行时和依赖已包含，无需安装 .NET、Python 或 Node.js。先从托盘退出旧程序再升级，现有配置与配置目录定位文件保留。
 
 从 v0.6.0 升级可继续使用已有 Clash 脚本。若从 v0.5.0 或更早版本升级，需要在“Clash 接入 → 合并已有脚本”中导入旧完整脚本，生成并应用到 Clash，才能启用 UDP 节点与独立健康回退组。
 
