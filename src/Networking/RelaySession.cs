@@ -45,7 +45,7 @@ internal sealed class RelaySession : IDisposable
         {
             while (!lifetime.IsCancellationRequested)
             {
-                await Task.Delay(3000, lifetime.Token).ConfigureAwait(false);
+                await Task.Delay(RelayHealthTiming.PollInterval, lifetime.Token).ConfigureAwait(false);
                 if (!await RefreshAsync(retryUdpAutomatically).ConfigureAwait(false)) return;
             }
         }
@@ -58,6 +58,7 @@ internal sealed class RelaySession : IDisposable
     }
 
     public RelayHealth Health => new(relay.TcpHealthy, relay.UdpHealthy);
+    public (int Active, int Limit, long Rejected) Load => (relay.ActiveTransfers, RelaySocksServer.MaxTransfers, relay.RejectedConnections);
     public bool IsConnected { get { lock (gate) return !disposed && client.IsConnected && forward.IsStarted; } }
 
     private RelaySession(SshClient client, ForwardedPortDynamic forward, PrivateKeyFile? key,
@@ -130,8 +131,8 @@ internal sealed class RelaySession : IDisposable
         catch { session.Dispose(); throw; }
     }
 
-    // Called under gate. TCP's nine-second lease covers the three-second polling
-    // interval plus a three-second UDP probe. UDP startup never blocks that polling.
+    // Called under gate. The shared lease includes both probe deadlines and
+    // scheduling headroom. UDP startup never blocks polling.
     private void Publish()
     {
         if (!disposed) relay.SetUpstream((int)forward.BoundPort, udp);
@@ -173,7 +174,7 @@ internal sealed class RelaySession : IDisposable
                 try
                 {
                     using var probe = client.CreateCommand("printf h2vm-alive");
-                    probe.CommandTimeout = TimeSpan.FromSeconds(3);
+                    probe.CommandTimeout = RelayHealthTiming.ProbeTimeout;
                     return probe.Execute() == "h2vm-alive";
                 }
                 catch { return false; }

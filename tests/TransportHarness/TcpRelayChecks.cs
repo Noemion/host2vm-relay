@@ -76,6 +76,27 @@ internal static class TcpRelayChecks
                 : "client TCP reset cancels a silent upstream read and releases its slot");
         }
 
+        // An upstream handshake is untrusted protocol input, even on loopback.
+        // Invalid versions/reserved bytes must never be forwarded as success.
+        foreach (byte[] invalid in new[] { new byte[] { 4, 0, 0, 1 }, new byte[] { 5, 0, 1, 1 } })
+        {
+            relay.SetUpstream(port, null);
+            using var caller = new TcpClient();
+            await caller.ConnectAsync(IPAddress.Loopback, relay.Port, token);
+            var front = caller.GetStream();
+            await front.WriteAsync(new byte[] { 5, 1, 0 }, token);
+            await front.ReadExactlyAsync(new byte[2], token);
+            await front.WriteAsync(new byte[] { 5, 1, 0, 1, 127, 0, 0, 1, 0, 80 }, token);
+            using var remote = await upstream.AcceptTcpClientAsync(token);
+            var back = remote.GetStream();
+            await back.ReadExactlyAsync(new byte[3], token);
+            await back.WriteAsync(new byte[] { 5, 0 }, token);
+            await back.ReadExactlyAsync(new byte[10], token);
+            await back.WriteAsync(invalid, token);
+            check(await front.ReadAsync(new byte[1], token) == 0, "malformed upstream SOCKS header cannot be relayed as success");
+            await Drained("malformed upstream response releases its slot");
+        }
+
         using (var caller = new TcpClient())
         using (var remote = await Connect(caller))
         {

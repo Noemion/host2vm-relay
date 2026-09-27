@@ -16,12 +16,13 @@ internal sealed class UdpTunnel : IDisposable
     private readonly CancellationTokenSource stopped = new();
     private readonly Channel<byte[]> pending = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(128) { FullMode = BoundedChannelFullMode.Wait, SingleReader = true });
     private readonly ConcurrentDictionary<uint, Action<byte[]>> receivers = new();
+    private readonly object receiverGate = new();
     private readonly ConcurrentDictionary<uint, (byte[] Nonce, TaskCompletionSource<bool> Result)> probes = new();
     private readonly TaskCompletionSource<bool> ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long lastProbe;
     private int disposed, nextAssociation;
     public CancellationToken Stopped => stopped.Token;
-    public bool Healthy => Volatile.Read(ref disposed) == 0 && Environment.TickCount64 - Interlocked.Read(ref lastProbe) < 7000;
+    public bool Healthy => Volatile.Read(ref disposed) == 0 && Environment.TickCount64 - Interlocked.Read(ref lastProbe) < RelayHealthTiming.Lease.TotalMilliseconds;
     public string LastError { get; private set; } = "";
 
     private UdpTunnel(Stream input, Stream output, Action release)
@@ -73,10 +74,14 @@ internal sealed class UdpTunnel : IDisposable
     }
     public uint Register(Action<byte[]> receive)
     {
-        if (!Healthy || receivers.Count >= 128) throw new IOException("UDP 中继不可用或会话数达到上限。");
-        uint id;
-        do { id = unchecked((uint)Interlocked.Increment(ref nextAssociation)); } while (id == 0 || !receivers.TryAdd(id, receive));
-        return id;
+        ArgumentNullException.ThrowIfNull(receive);
+        lock (receiverGate)
+        {
+            if (!Healthy || receivers.Count >= 128) throw new IOException("UDP 中继不可用或会话数达到上限。");
+            uint id;
+            do { id = unchecked((uint)++nextAssociation); } while (id == 0 || !receivers.TryAdd(id, receive));
+            return id;
+        }
     }
     public void Unregister(uint id)
     {
@@ -104,7 +109,7 @@ internal sealed class UdpTunnel : IDisposable
                 LastError = "UDP 探测无法入队：通道已关闭或队列已满。";
                 return false;
             }
-            bool ok = await promise.Task.WaitAsync(TimeSpan.FromSeconds(3), token).ConfigureAwait(false);
+            bool ok = await promise.Task.WaitAsync(RelayHealthTiming.ProbeTimeout, token).ConfigureAwait(false);
             if (ok) Interlocked.Exchange(ref lastProbe, Environment.TickCount64);
             return ok;
         }
@@ -163,7 +168,7 @@ internal sealed class UdpTunnel : IDisposable
         if (Interlocked.Exchange(ref disposed, 1) != 0) return;
         stopped.Cancel(); pending.Writer.TryComplete();
         foreach (var probe in probes.Values) probe.Result.TrySetResult(false);
-        receivers.Clear();
+        lock (receiverGate) receivers.Clear();
         try { input.Dispose(); } catch { }
         try { release(); } catch { }
         try { output.Dispose(); } catch { }

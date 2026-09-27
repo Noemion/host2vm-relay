@@ -23,6 +23,7 @@ internal static class LocalTransportChecks
         try
         {
             await ConcurrencyChecks.RunAsync(Check, token);
+            await LoadChecks.RunAsync(Check, token);
             await HealthChecks.RunAsync();
             Check(true, "health endpoint supports repeated probes and state changes on one connection");
             await TcpRelayChecks.RunAsync(Check, token);
@@ -44,6 +45,16 @@ internal static class LocalTransportChecks
                 using var tunnel = await UdpTunnel.OpenStreamsAsync(process.StandardInput.BaseStream, process.StandardOutput.BaseStream,
                     () => { if (!process.HasExited) process.Kill(); }, token);
                 Check(tunnel.Healthy && await tunnel.ProbeAsync(token), "native host streams exchange a nonce checked by real UDP");
+                var associations = new System.Collections.Concurrent.ConcurrentBag<uint>();
+                Parallel.For(0, 256, _ =>
+                {
+                    try { associations.Add(tunnel.Register(_ => { })); }
+                    catch (IOException) { }
+                });
+                Check(associations.Count == 128, "256 concurrent UDP registrations respect the atomic 128-association limit");
+                foreach (uint association in associations) tunnel.Unregister(association);
+                uint reused = tunnel.Register(_ => { }); tunnel.Unregister(reused);
+                Check(true, "UDP registration capacity is reusable after concurrent release");
                 using var relay = new RelaySocksServer(0, TimeSpan.FromSeconds(1));
                 relay.SetUpstream(0, tunnel);
                 using var echo = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));

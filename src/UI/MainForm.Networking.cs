@@ -2,6 +2,8 @@ namespace Host2VMRelay;
 
 public sealed partial class MainForm
 {
+    private string? compiledRulesSource;
+    private string compiledRulesPayload = ClashRuleFile.DisabledPayload;
     private void SaveConnection()
     {
         if (string.IsNullOrWhiteSpace(host.Text) || string.IsNullOrWhiteSpace(user.Text))
@@ -147,13 +149,24 @@ public sealed partial class MainForm
     private void ApplyRouteFiles()
     {
         bool tcp = session?.Health.Tcp == true, udp = session?.Health.Udp == true && settings.EnableUdp;
-        string payload = tcp || udp ? Rules.Compile(settings.Rules) : ClashRuleFile.DisabledPayload;
+        // Profile objects also change for unrelated preferences. Cache by source
+        // text so routine health ticks do not parse every domain again on the UI.
+        if ((tcp || udp) && compiledRulesSource != settings.Rules)
+        {
+            compiledRulesPayload = Rules.Compile(settings.Rules);
+            compiledRulesSource = settings.Rules;
+        }
+        string payload = tcp || udp ? compiledRulesPayload : ClashRuleFile.DisabledPayload;
         bool tcpChanged = ClashRuleFile.Write(tcp ? payload : ClashRuleFile.DisabledPayload);
         bool udpChanged = ClashRuleFile.WriteUdp(udp ? payload : ClashRuleFile.DisabledPayload);
         if (tcpChanged || udpChanged) ClashRuleRefresh.Request(Log);
     }
     private void PresentPath(string? reason = null)
     {
+        var load = session?.Load;
+        connectionLoad.Text = load is { } usage
+            ? $"当前转发 {usage.Active} / {usage.Limit} · 本次连接累计过载拒绝 {usage.Rejected} 次"
+            : "当前无转发连接。";
         bool tcp = session?.Health.Tcp == true, udp = session?.Health.Udp == true && settings.EnableUdp;
         string key = tcp ? (udp ? "both" : settings.EnableUdp ? "tcp-only" : "tcp") : "host";
         SetConnectionIcon(!tcp ? ConnectionIconState.Disconnected : settings.EnableUdp && !udp ? ConnectionIconState.Degraded : ConnectionIconState.Connected,
@@ -203,6 +216,7 @@ public sealed partial class MainForm
             if (IsDisposed) return;
             lastPath = "host";
             state.Text = "● 已断开"; state.ForeColor = Color.DimGray; feed.Text = "宿主机原有分流 · 虚拟机中继已停用";
+            connectionLoad.Text = "当前无转发连接。";
             SetConnectionIcon(ConnectionIconState.Disconnected, "虚拟机已断开");
             Log($"已主动断开，清理耗时 {elapsed.Elapsed.TotalSeconds:F1} 秒；不会自动重连。");
         }

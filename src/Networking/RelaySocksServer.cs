@@ -16,13 +16,23 @@ internal sealed class RelaySocksServer : IDisposable
     private readonly TcpListener listener;
     private readonly CancellationTokenSource lifetime = new();
     private readonly ConcurrentDictionary<TcpClient, byte> clients = new();
-    private readonly SemaphoreSlim slots = new(128);
+    internal const int MaxTransfers = 128;
+    internal const int MaxConnections = MaxTransfers + 32;
+    // Extra front-door capacity lets probes reach HealthAsync when all forwarding
+    // slots are occupied. Handshakes remain bounded and have an eight-second deadline.
+    private readonly SemaphoreSlim slots = new(MaxConnections);
+    private readonly SemaphoreSlim transfers = new(MaxTransfers);
+    private readonly object admissionGate = new();
+    private int disposed;
+    private long rejected;
     private readonly TimeSpan udpIdleTimeout;
     private readonly Action<string>? log;
     public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
     internal int ActiveConnections => clients.Count;
-    public bool TcpHealthy { get { var s = Volatile.Read(ref upstream); return s.Port > 0 && Environment.TickCount64 < s.Expires; } }
-    public bool UdpHealthy => Volatile.Read(ref upstream).Udp?.Healthy == true;
+    internal int ActiveTransfers => MaxTransfers - transfers.CurrentCount;
+    internal long RejectedConnections => Interlocked.Read(ref rejected);
+    public bool TcpHealthy { get { var s = Volatile.Read(ref upstream); return Volatile.Read(ref disposed) == 0 && s.Port > 0 && Environment.TickCount64 < s.Expires; } }
+    public bool UdpHealthy => Volatile.Read(ref disposed) == 0 && Volatile.Read(ref upstream).Udp?.Healthy == true;
 
     public RelaySocksServer(int port, TimeSpan? udpIdleTimeout = null, Action<string>? log = null)
     {
@@ -33,7 +43,7 @@ internal sealed class RelaySocksServer : IDisposable
     }
     public void SetUpstream(int tcpPort, UdpTunnel? udp)
     {
-        Volatile.Write(ref upstream, new Upstream(tcpPort, udp, Environment.TickCount64 + 9000));
+        Volatile.Write(ref upstream, new Upstream(tcpPort, udp, Environment.TickCount64 + (long)RelayHealthTiming.Lease.TotalMilliseconds));
     }
     private async Task AcceptAsync()
     {
@@ -44,8 +54,14 @@ internal sealed class RelaySocksServer : IDisposable
                 var client = await listener.AcceptTcpClientAsync(lifetime.Token).ConfigureAwait(false);
                 // Admission is nonblocking. A cancelled token here would otherwise
                 // throw after accept and leak the newly accepted socket.
-                if (!slots.Wait(0)) { client.Dispose(); continue; }
-                clients.TryAdd(client, 0);
+                lock (admissionGate)
+                {
+                    // Dispose and admission are one transaction: a socket accepted
+                    // during shutdown must not escape the disposal snapshot.
+                    if (disposed != 0 || !slots.Wait(0))
+                    { Interlocked.Increment(ref rejected); client.Dispose(); continue; }
+                    clients.TryAdd(client, 0);
+                }
                 _ = ServeAsync(client);
             }
         }
@@ -79,6 +95,7 @@ internal sealed class RelaySocksServer : IDisposable
     private async Task ServeAsync(TcpClient client)
     {
         string? target = null;
+        bool transferSlot = false;
         using (client)
         using (var tokenSource = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token))
         {
@@ -98,6 +115,17 @@ internal sealed class RelaySocksServer : IDisposable
                     await stream.WriteAsync(Reply(0), token).ConfigureAwait(false); await HealthAsync(stream, token).ConfigureAwait(false); return;
                 }
                 if (request[1] == 1) { target = Destination(address); Trace("TCP 请求：" + target); }
+                if (request[1] is 1 or 3)
+                {
+                    transferSlot = transfers.Wait(0);
+                    if (!transferSlot)
+                    {
+                        Interlocked.Increment(ref rejected);
+                        Trace("转发连接数已达到上限，拒绝本次请求。");
+                        await stream.WriteAsync(Reply(2), token).ConfigureAwait(false);
+                        return;
+                    }
+                }
                 Upstream state = Volatile.Read(ref upstream);
                 if (request[1] == 3)
                 {
@@ -110,7 +138,7 @@ internal sealed class RelaySocksServer : IDisposable
                 }
                 else if (request[1] == 1)
                 {
-                    if (!TcpHealthy) { Trace("TCP 拒绝：" + target + "，隧道尚未就绪。"); await stream.WriteAsync(Reply(1), token).ConfigureAwait(false); return; }
+                    if (state.Port <= 0 || Environment.TickCount64 >= state.Expires) { Trace("TCP 拒绝：" + target + "，隧道尚未就绪。"); await stream.WriteAsync(Reply(1), token).ConfigureAwait(false); return; }
                     using var remote = new TcpClient { NoDelay = true };
                     await remote.ConnectAsync(IPAddress.Loopback, state.Port, token).ConfigureAwait(false);
                     var tunnel = remote.GetStream();
@@ -118,6 +146,7 @@ internal sealed class RelaySocksServer : IDisposable
                     if (!(await ReadAsync(tunnel, 2, token).ConfigureAwait(false)).AsSpan().SequenceEqual(new byte[] { 5, 0 })) throw new IOException("SSH SOCKS handshake failed.");
                     await tunnel.WriteAsync(new byte[] { 5, 1, 0 }.Concat(address).ToArray(), token).ConfigureAwait(false);
                     byte[] header = await ReadAsync(tunnel, 4, token).ConfigureAwait(false);
+                    if (header[0] != 5 || header[2] != 0) throw new IOException("Invalid upstream SOCKS response.");
                     byte[] bound = await AddressAsync(tunnel, header[3], token).ConfigureAwait(false);
                     await stream.WriteAsync(header[..3].Concat(bound).ToArray(), token).ConfigureAwait(false);
                     if (header[1] != 0) { Trace("TCP 转发失败：" + target + "，上游 SOCKS 状态 " + header[1]); return; }
@@ -134,7 +163,12 @@ internal sealed class RelaySocksServer : IDisposable
             }
             catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException or OperationCanceledException)
             { if (target is not null && !lifetime.IsCancellationRequested) Trace("TCP 连接结束：" + target + "，" + ex.Message); }
-            finally { if (target is not null) Trace("TCP 已关闭：" + target); clients.TryRemove(client, out _); slots.Release(); }
+            finally
+            {
+                if (target is not null) Trace("TCP 已关闭：" + target);
+                if (transferSlot) transfers.Release();
+                clients.TryRemove(client, out _); slots.Release();
+            }
         }
     }
     private async Task HealthAsync(Stream stream, CancellationToken token)
@@ -237,7 +271,11 @@ internal sealed class RelaySocksServer : IDisposable
     }
     public void Dispose()
     {
-        if (lifetime.IsCancellationRequested) return;
+        lock (admissionGate)
+        {
+            if (disposed != 0) return;
+            disposed = 1;
+        }
         lifetime.Cancel(); listener.Stop(); foreach (var client in clients.Keys) client.Dispose();
     }
 }

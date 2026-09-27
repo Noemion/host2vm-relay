@@ -109,6 +109,11 @@ public sealed partial class MainForm
             SelectPage(3);
             string previousLog = log.Text, previousHost = settings.Host;
             log.Text = "00:00:00  diagnostic entry\r\n";
+            var pauseLog = tabs.TabPages[3].Controls.Find("pauseLog", true).OfType<Button>().Single();
+            pauseLog.PerformClick();
+            audit.Check(pauseLogDisplay && pauseLog.Text == "继续显示", "pause log display provides immediate reversible feedback");
+            pauseLog.PerformClick();
+            audit.Check(!pauseLogDisplay && pauseLog.Text == "暂停显示", "resume log display restores the action label");
             tabs.TabPages[3].Controls.Find("clearLog", true).OfType<Button>().Single().PerformClick();
             audit.Check(log.TextLength == 0 && settings.Host == previousHost && settings.Rules == savedRules, "clear log preserves connection and rule settings");
             log.Text = previousLog;

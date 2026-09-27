@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory)][string]$Dotnet,
     [Parameter(Mandatory)][string]$Assembly,
-    [Parameter(Mandatory)][string]$Output
+    [Parameter(Mandatory)][string]$Output,
+    [ValidateSet('Startup','Layout')][string]$Mode = 'Startup'
 )
 $ErrorActionPreference = 'Stop'
 # Never switch the input desktop. The diagnostic owns and closes only its child.
@@ -38,9 +39,9 @@ public static class IsolatedStartupDesktop {
             if(!CreateProcess(null,new StringBuilder(command),IntPtr.Zero,IntPtr.Zero,false,0x08000000,IntPtr.Zero,cwd,ref startup,out child))
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             try {
-                if(WaitForSingleObject(child.process,20000)!=0) {
+                if(WaitForSingleObject(child.process,55000)!=0) {
                     TerminateProcess(child.process,124); WaitForSingleObject(child.process,3000);
-                    throw new TimeoutException("Isolated startup diagnostic exceeded 20 seconds.");
+                    throw new TimeoutException("Isolated UI diagnostic exceeded 55 seconds.");
                 }
                 uint code; GetExitCodeProcess(child.process,out code); return (int)code;
             } finally {CloseHandle(child.thread);CloseHandle(child.process);}
@@ -52,7 +53,12 @@ $runtimePath = (Resolve-Path -LiteralPath $Dotnet).Path
 $assemblyPath = (Resolve-Path -LiteralPath $Assembly).Path
 $outputPath = [IO.Path]::GetFullPath($Output)
 if (($runtimePath + $assemblyPath + $outputPath).Contains('"')) { throw 'Quotes are not allowed in diagnostic paths.' }
-$command = '"' + $runtimePath + '" exec "' + $assemblyPath + '" --startup-check "' + $outputPath + '"'
+$checkArgument = if ($Mode -eq 'Startup') { '--startup-check' } else { '--smoke --native-dpi --ui-scale=200' }
+$command = '"' + $runtimePath + '" exec "' + $assemblyPath + '" ' + $checkArgument + ' "' + $outputPath + '"'
 $code = [IsolatedStartupDesktop]::Run($command, $PWD.Path)
-if (Test-Path -LiteralPath $outputPath) { Get-Content -LiteralPath $outputPath }
+$resultPath = if ($Mode -eq 'Layout') { [IO.Path]::ChangeExtension($outputPath, '.json') } else { $outputPath }
+if (Test-Path -LiteralPath $resultPath) {
+    $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+    $result | Select-Object Status,Dpi,Assertions,Errors | ConvertTo-Json -Depth 4
+}
 if ($code -ne 0) { throw "Startup diagnostic failed: $code" }

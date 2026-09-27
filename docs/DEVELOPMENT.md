@@ -30,7 +30,7 @@ dotnet run --project tests/TransportHarness/TransportHarness.csproj -c Release -
 
 `ScriptComposer` 不执行 JavaScript。v2 分隔用户区域和受校验的托管区域，允许用户区增量编辑。v1 只有已知规范模板才能无损升级；未知尾部代码或托管修改显式报错。文本规范化为 LF，Windows 编辑框显示为 CRLF。测试执行 C# 实际导出的 JavaScript，不用测试端独立拼接器冒充生成器验收。
 
-`UiTheme` 使用 ContentScale=0.8 与静态 SpacingScale=0.6。9.6pt 是新的设计基准，系统有效 DPI 和 PerMonitorV2 保持不变。不要在 WinForms 自动缩放后再整体乘一次 0.8。五个页面及脚本窗口继续验证 100/125/150/175/200%，原生与注入结果分开。
+`UiTheme` 默认使用 ContentScale=0.8、SpacingScale=0.6 和 9 pt 字体。用户可分别设置内容缩放与字体，显示设置在下次启动时生效。系统有效 DPI 和 PerMonitorV2 保持不变。不要在 WinForms 自动缩放后再整体乘一次 0.8。页面使用原生滚动，禁止通过手动移动内容实现滚动。五个页面及脚本窗口继续验证 100/125/150/175/200%，原生与注入结果分开。
 
 ## 验收与发布
 
@@ -50,7 +50,13 @@ Linux 网络验收必须运行在可销毁、有 root 权限的 CI 测试机：`
 - UDP association 的两分钟空闲时间由两个方向成功传输共同刷新。DNS 等待、无效包和队列拒绝不算成功传输。测试注入一秒空闲时间，用真实 socket 验证持续下行与真正空闲的区别。
 - Python DNS 使用四个 daemon worker、32 个排队请求、最多 32 个待解析目标、每目标八个数据报；逻辑超时两秒，成功结果缓存 60 秒，最多 128 项。系统 getaddrinfo 本身不可强制取消，超时/关闭后的结果不再投递；即使 worker 阻塞，也不阻塞数字 IP、已有会话和健康探测。UDP 过载允许丢包，不增长无界队列。
 - `Settings.SaveUpdated` 复制候选配置及 HostKeys，先原子写入，再由调用方替换活动引用；失败时内存和磁盘保持原值。规则保存与 Clash 同步失败分别报告。新增可变引用字段时必须同步扩展候选复制逻辑。
-- SSH 连接使用可取消的 ConnectAsync。会话停止会取消 UDP 启动/探测，并停用监听器。刷新操作串行化；后台 UDP 重建不阻塞 TCP 的九秒健康租约。UI 每三秒刷新，UDP 探测最多三秒、健康有效期七秒，重试间隔十五秒。修改这些时间窗口时要一起验证最坏耗时和回退延迟。
+- SSH 连接使用可取消的 ConnectAsync。会话停止会取消 UDP 启动/探测，并停用监听器。后台循环独立检查连接，界面只读取快照。刷新操作串行化；后台 UDP 重建不阻塞 TCP 检查。`RelayHealthTiming` 集中定义三秒轮询间隔、三秒探测超时及十二秒有效期。有效期覆盖等待间隔、SSH 和 UDP 两次探测，并留三秒调度余量。明确的探测失败立即处理；缺少刷新时最迟在有效期结束后失效，Clash 的实际切换还取决于自身探测周期。
+
+- SOCKS 入口最多接纳 160 个连接，其中转发最多占用 128 个。其余容量用于握手及健康探测。握手最长八秒，超过转发上限返回 SOCKS 失败，不排队等待。健康探测仍可能受到握手洪泛影响，不能视为独立管理端口。关闭与接入在同一锁内检查状态，锁外取消和关闭套接字。
+- UDP 注册的检查和插入在同一锁内完成，最多保留 128 个关联。数据转发使用异步套接字和有界队列；SSH.NET 的通道读写仍可能占用工作线程，不能宣称整个链路完全无阻塞。
+- 日志队列最多保留 1000 条，单条最多 4096 个字符。界面每批最多消费 100 条且不超过 16384 个字符。暂停显示只影响消费端，溢出时丢弃较早记录并显示提示。
+
+审查结论、并发边界及待完成的发布验收见 [质量审查记录](QUALITY_REVIEW.md)。
 
 本机故障回归：`dotnet run --project tests/TransportHarness/TransportHarness.csproj -c Release -- --local-check artifacts/checks/windows-transport.json`，包含 TCP 两侧 reset、半关闭延迟响应、资源回收、SSH 启动取消、UDP 单向推送及空闲关闭。`python tests/test-udp-helper.py` 额外覆盖慢 DNS、超时结果丢弃、关闭后的解析结果、缓存与退出。
 

@@ -38,7 +38,7 @@ public sealed partial class MainForm
         var identity = UiLayout.Card("SSH 连接", "填写虚拟机的地址与登录信息。",
             UiLayout.Pair(UiLayout.Field("虚拟机地址", host), UiLayout.Field("SSH 端口", port), 72),
             UiLayout.Pair(UiLayout.Field("用户名", user), UiLayout.Field("认证方式", auth)),
-            keyField, passwordField, UiLayout.Actions(connect, disconnect));
+            keyField, passwordField, UiLayout.Actions(connect, disconnect), connectionLoad);
         UiLayout.Add(page, identity);
         var preferences = UiLayout.Stack(); preferences.Margin = UiTheme.Spacing(0, 4, 0, 0);
         remember.Margin = UiTheme.Spacing(0, 4, 0, 10); retry.Margin = UiTheme.Spacing(0, 4, 0, 10);
@@ -178,36 +178,5 @@ public sealed partial class MainForm
     {
         string result = ClashScript.Generate((int)socksPort.Value, host.Text.Trim(), existing);
         ApplyRouteFiles(); Log("完整 Clash 扩展脚本已生成。"); return result;
-    }
-    private void BuildLog()
-    {
-        var page = PageContent("运行日志");
-        var copyLog = UiLayout.Button("复制日志", 120); var exportLog = UiLayout.Button("导出日志", 120); var clearLog = UiLayout.Button("清空", 90);
-        clearLog.Name = "clearLog"; log.AccessibleName = "运行日志内容";
-        var counter = UiLayout.Help("连接与操作发生后，记录将显示在这里。"); counter.Name = "logSummary";
-        log.TextChanged += (_, _) =>
-        {
-            copyLog.Enabled = exportLog.Enabled = clearLog.Enabled = log.TextLength > 0;
-            counter.Text = log.TextLength == 0 ? "暂无日志" : log.Lines.Count(line => line.Length > 0) + " 条记录 · 仅保留本次运行日志";
-        };
-        var logFeedback = UiLayout.Help("");
-        copyLog.Click += (_, _) =>
-        {
-            try
-            {
-                if (log.TextLength == 0) { logFeedback.Text = "暂无可复制的日志。"; return; }
-                Clipboard.SetText(log.Text); copyLog.ShowFeedback("✓ 已复制"); logFeedback.Text = "复制成功，日志已复制到剪贴板。";
-            }
-            catch (Exception ex) { logFeedback.Text = "复制失败，请重试。"; Error(ex); }
-        };
-        exportLog.Click += (_, _) =>
-        {
-            using var dialog = new SaveFileDialog { Title = "导出运行日志", Filter = "文本文件|*.txt", FileName = "Host2VMRelay-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt", InitialDirectory = Settings.Folder };
-            if (dialog.ShowDialog(this) != DialogResult.OK) { logFeedback.Text = "已取消导出。"; return; }
-            try { File.WriteAllText(dialog.FileName, log.Text, new UTF8Encoding(false)); logFeedback.Text = "导出成功：" + dialog.FileName; } catch (Exception ex) { logFeedback.Text = "导出失败，请检查目标路径。"; Error(ex); }
-        };
-        clearLog.Click += (_, _) => { pendingLogs.Clear(); log.Clear(); logFeedback.Text = "日志已清空。"; };
-        UiLayout.Add(page, UiLayout.Card("活动记录", "", UiLayout.Actions(copyLog, exportLog, clearLog), UiLayout.Editor(log, 380, true), counter, logFeedback));
-        UiLayout.Add(page, UiLayout.Help("分享日志前请检查其中的主机地址、用户名等信息。清空仅影响当前日志，不会清除连接配置。"));
     }
 }

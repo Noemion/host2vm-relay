@@ -7,6 +7,8 @@ public sealed partial class MainForm : Form
     private readonly BackgroundCleanup connectionCleanup = new();
     private readonly PendingLogBuffer pendingLogs = new();
     private readonly System.Windows.Forms.Timer logTimer = new() { Interval = 200 };
+    private bool pauseLogDisplay;
+    private readonly Label connectionLoad = UiLayout.Help("连接后显示当前转发数量和过载情况。");
     private readonly CancellationTokenSource formLifetime = new();
     private bool polling;
     private string lastPath = "";
@@ -88,10 +90,20 @@ public sealed partial class MainForm : Form
         };
         logTimer.Tick += (_, _) =>
         {
+            // Keep selected text stable while copying or inspecting past events.
+            // Producers continue into the bounded queue while display is paused.
+            if (pauseLogDisplay || log.SelectionLength > 0) return;
             string batch = pendingLogs.Drain();
             if (batch.Length == 0) return;
             log.AppendText(batch);
-            if (log.TextLength > 60000) log.Text = log.Text[^40000..];
+            if (log.TextLength > 60000)
+            {
+                string text = log.Text;
+                int boundary = text.IndexOf('\n', text.Length - 40000);
+                log.Text = boundary < 0 ? text[^40000..] : text[(boundary + 1)..];
+                log.SelectionStart = log.TextLength;
+                log.ScrollToCaret();
+            }
         };
         ResumeLayout(true); timer.Start(); logTimer.Start();
     }
