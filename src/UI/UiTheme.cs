@@ -4,8 +4,14 @@ namespace Host2VMRelay;
 
 internal static class UiTheme
 {
-    public const float ContentScale = 0.8F;
-    public const float SpacingScale = 0.6F;
+    public static float ContentScale { get; private set; } = 0.8F;
+    public static float SpacingScale => 0.75F * ContentScale;
+    public static float FontPoints { get; private set; } = 9F;
+    public static void Configure(Settings settings)
+    {
+        ContentScale = 0.8F * settings.UiScalePercent / 100F;
+        FontPoints = (float)settings.FontSizePoints;
+    }
     public static int Units(int logical) => (int)Math.Round(logical * ContentScale, MidpointRounding.AwayFromZero);
     public static System.Drawing.Size Size(int width, int height) => new(Units(width), Units(height));
     public static Padding Spacing(params int[] values)
@@ -93,12 +99,34 @@ internal sealed class EntryFrame : TableLayoutPanel
 
 internal class ActionButton : Button
 {
+    internal int PaintCount { get; private set; }
     protected bool Hot { get; private set; }
     private bool pressed, primary;
+    private readonly System.Windows.Forms.Timer feedbackTimer = new() { Interval = 3000 };
+    private string? originalCaption;
+    public bool Emphasized { get; set; }
+    public void ShowFeedback(string caption)
+    {
+        originalCaption ??= Text;
+        Text = caption; Invalidate();
+        feedbackTimer.Stop(); feedbackTimer.Start();
+    }
+    public void ClearFeedback()
+    {
+        feedbackTimer.Stop();
+        if (originalCaption is null) return;
+        Text = originalCaption; originalCaption = null; Invalidate();
+    }
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) feedbackTimer.Dispose();
+        base.Dispose(disposing);
+    }
     public bool Primary { get => primary; set { primary = value; Invalidate(); } }
     public ActionButton()
     {
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        feedbackTimer.Tick += (_, _) => ClearFeedback();
         FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0;
         AutoSize = true; AutoSizeMode = AutoSizeMode.GrowAndShrink;
         MinimumSize = UiTheme.Size(100, 42); Padding = UiTheme.Spacing(16, 8, 16, 8); Margin = UiTheme.Spacing(0, 4, 10, 4); Cursor = Cursors.Hand;
@@ -118,11 +146,12 @@ internal class ActionButton : Button
     protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
     protected override void OnLostFocus(EventArgs e) { pressed = false; Invalidate(); base.OnLostFocus(e); }
     protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
-    protected virtual Color FillColor => !Enabled ? UiTheme.Field : Primary ? (pressed ? Color.FromArgb(15, 73, 60) : Hot ? Color.FromArgb(31, 119, 99) : UiTheme.Accent) : pressed ? UiTheme.Selection : Hot ? UiTheme.Field : UiTheme.Surface;
-    protected virtual Color TextColor => !Enabled ? SystemColors.GrayText : Primary ? Color.White : UiTheme.Ink;
-    protected virtual Color BorderColor => Primary && Enabled ? FillColor : UiTheme.Line;
+    protected virtual Color FillColor => !Enabled ? UiTheme.Field : originalCaption is not null || Emphasized ? UiTheme.Selection : Primary ? (pressed ? Color.FromArgb(15, 73, 60) : Hot ? Color.FromArgb(31, 119, 99) : UiTheme.Accent) : pressed ? UiTheme.Selection : Hot ? UiTheme.Field : UiTheme.Surface;
+    protected virtual Color TextColor => !Enabled ? SystemColors.GrayText : originalCaption is not null || Emphasized ? UiTheme.Accent : Primary ? Color.White : UiTheme.Ink;
+    protected virtual Color BorderColor => Enabled && (originalCaption is not null || Emphasized) ? UiTheme.Accent : Primary && Enabled ? FillColor : UiTheme.Line;
     protected override void OnPaint(PaintEventArgs e)
     {
+        PaintCount++;
         if (SystemInformation.HighContrast) { base.OnPaint(e); return; }
         e.Graphics.Clear(Parent?.BackColor ?? UiTheme.Surface); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var shape = UiTheme.Round(new RectangleF(1, 1, Math.Max(0, Width - 3), Math.Max(0, Height - 3)), UiTheme.Px(this, 9));
@@ -199,13 +228,24 @@ internal sealed class NavigationButton : ActionButton
 
 internal sealed class StatusBadge : Label
 {
-    public StatusBadge() { AutoSize = true; Padding = UiTheme.Spacing(12, 6, 12, 6); Margin = Padding.Empty; }
+    public StatusBadge()
+    {
+        AutoSize = true; Padding = UiTheme.Spacing(18, 10, 18, 10); Margin = Padding.Empty;
+        Font = new Font("Microsoft YaHei UI", UiTheme.FontPoints * 10F / 9.6F, FontStyle.Bold);
+        AccessibleName = "连接状态"; AccessibleRole = AccessibleRole.StatusBar;
+    }
+    protected override void OnForeColorChanged(EventArgs e) { base.OnForeColorChanged(e); Invalidate(); }
     protected override void OnPaintBackground(PaintEventArgs e)
     {
         if (SystemInformation.HighContrast) { base.OnPaintBackground(e); return; }
         e.Graphics.Clear(Parent?.BackColor ?? UiTheme.Canvas); e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var shape = UiTheme.Round(new RectangleF(0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1)), UiTheme.Px(this, 16));
-        using var fill = new SolidBrush(Color.FromArgb(235, 240, 237)); e.Graphics.FillPath(fill, shape);
+        // Derive the tint and outline from the status color; text also names the
+        // state so connection health never depends on color perception alone.
+        Color tint = Color.FromArgb(225 + ForeColor.R * 30 / 255, 225 + ForeColor.G * 30 / 255, 225 + ForeColor.B * 30 / 255);
+        using var fill = new SolidBrush(tint);
+        using var border = new Pen(ForeColor);
+        e.Graphics.FillPath(fill, shape); e.Graphics.DrawPath(border, shape);
     }
 }
 

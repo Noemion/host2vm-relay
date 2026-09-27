@@ -1,6 +1,27 @@
 using Host2VMRelay;
 using System.Text.Json;
 
+if (args.Length == 4 && args[0] == "--ssh-handshake")
+{
+    int proxyPort = int.Parse(args[3]);
+    var connection = new Renci.SshNet.ConnectionInfo(args[1], int.Parse(args[2]), "diagnostic-no-auth",
+        Renci.SshNet.ProxyTypes.Socks5, "127.0.0.1", proxyPort, "", "", new Renci.SshNet.NoneAuthenticationMethod("diagnostic-no-auth"))
+        { Timeout = TimeSpan.FromSeconds(8) };
+    using var ssh = new Renci.SshNet.SshClient(connection);
+    bool reachedHostKey = false;
+    ssh.HostKeyReceived += (_, e) =>
+    {
+        reachedHostKey = true;
+        Console.WriteLine("SSH key exchange reached: " + e.HostKeyName + "; host key deliberately rejected before authentication.");
+        e.CanTrust = false;
+    };
+    try { await ssh.ConnectAsync(CancellationToken.None); }
+    catch (Exception ex) { Console.WriteLine(ex.GetType().Name + ": " + ex.Message); }
+    if (!reachedHostKey) Environment.ExitCode = 1;
+    return;
+}
+
+if (args.Length == 1 && args[0] == "--health-check") { await HealthChecks.RunAsync(); return; }
 if (args.Length == 2 && args[0] == "--local-check") { await LocalTransportChecks.RunAsync(args[1]); return; }
 if (args.Length < 6) throw new ArgumentException("host sshPort user privateKey fingerprint scriptOutput");
 var options = new RelayConnectionOptions(args[0], int.Parse(args[1]), args[2], 18090, true, args[3], "", true);

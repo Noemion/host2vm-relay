@@ -51,6 +51,17 @@ internal static class SelfTest
             {
                 using var icon = AppIcon.Load(size);
                 Check(icon.Width == size && icon.Height == size, "embedded application icon " + size);
+                var states = new HashSet<string>();
+                foreach (var state in Enum.GetValues<ConnectionIconState>())
+                {
+                    using var statusIcon = AppIcon.Load(size, state);
+                    using var bitmap = statusIcon.ToBitmap();
+                    using var encoded = new MemoryStream();
+                    bitmap.Save(encoded, System.Drawing.Imaging.ImageFormat.Png);
+                    states.Add(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(encoded.ToArray())));
+                    Check(statusIcon.Width == size && statusIcon.Height == size, "status icon dimensions " + state + " " + size);
+                }
+                Check(states.Count == 4, "connection status icons are visually distinct at " + size);
             }
             Check(ClashScript.Generate(1080, "192.168.50.8").Contains("IP-CIDR,192.168.50.8/32,DIRECT"), "custom VM IPv4 bypass");
             Check(ClashScript.Generate(1080, "fd00::8").Contains("IP-CIDR6,fd00::8/128,DIRECT"), "custom VM IPv6 bypass");

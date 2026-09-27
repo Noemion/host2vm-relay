@@ -2,8 +2,67 @@ namespace Host2VMRelay;
 
 public sealed partial class MainForm
 {
-    private void Restore() { Show(); WindowState = FormWindowState.Normal; Activate(); }
+    private void Restore()
+    {
+        Show(); WindowState = FormWindowState.Normal; Activate();
+        UiLayout.FitToScreen(this, new Size(680, 520)); UpdateShellLayout();
+        Invalidate(true);
+    }
     public void ExitForTest() { quitting = true; Close(); }
+
+    internal void CheckStartup(string output)
+    {
+        int painted = 0, sample = 0;
+        var samples = new List<object>();
+        var failures = new List<string>();
+        PageScrollPanel? scrollPage = null;
+        Point scrollOrigin = Point.Empty;
+        var observer = new System.Windows.Forms.Timer { Interval = 150 };
+        Load += (_, _) => Observe("load-before-show");
+        Shown += (_, _) => observer.Start();
+        observer.Tick += (_, _) =>
+        {
+            Observe("idle-" + (++sample));
+            if (sample < 4) return;
+            if (sample == 4)
+            {
+                SelectPage(4);
+                scrollPage = tabs.TabPages[4].Controls.OfType<PageScrollPanel>().Single();
+                scrollPage.ResetScroll();
+                scrollOrigin = scrollPage.Controls[0].Location;
+                if (!scrollPage.AutoScroll || !scrollPage.VerticalScroll.Visible)
+                    failures.Add("Settings page must expose native vertical scrolling");
+                scrollPage.AutoScrollPosition = new Point(0, 300);
+                return;
+            }
+            if (sample == 5)
+            {
+                if (scrollPage!.AutoScrollPosition.Y >= 0)
+                    failures.Add("Settings page did not scroll");
+                if (scrollPage.Controls[0].Top != scrollOrigin.Y + scrollPage.AutoScrollPosition.Y)
+                    failures.Add("Page content does not follow native scroll position");
+                scrollPage.ResetScroll();
+                return;
+            }
+            if (scrollPage!.AutoScrollPosition != Point.Empty || scrollPage.Controls[0].Location != scrollOrigin)
+                failures.Add("Page geometry changed after scrolling back to the top");
+            observer.Stop(); observer.Dispose();
+            if (painted == 0) failures.Add("No natural navigation paint observed");
+            File.WriteAllText(output, System.Text.Json.JsonSerializer.Serialize(new { Status = failures.Count == 0 ? "PASS" : "FAIL", Dpi = DeviceDpi, NaturalNavigationPaints = painted, Samples = samples, Errors = failures }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            if (failures.Count > 0) Environment.ExitCode = 1;
+            ExitForTest();
+        };
+        void Observe(string stage)
+        {
+            painted = navigationButtons.Sum(b => b.PaintCount);
+            bool compact = navigation?.Parent == compactNavigation;
+            int expected = compact ? 0 : UiTheme.Px(this, 204);
+            float actual = shellBody!.ColumnStyles[0].Width;
+            if (Math.Abs(actual - expected) > 1) failures.Add(stage + ": sidebar was scaled twice");
+            if (navigationButtons.Any(b => b.Height < TextRenderer.MeasureText(b.Text, b.Font).Height)) failures.Add(stage + ": navigation text is clipped");
+            samples.Add(new { Stage = stage, SidebarWidth = actual, ExpectedSidebarWidth = expected, Client = ClientSize.ToString(), NavigationPaints = painted });
+        }
+    }
 
     public void CaptureTabs(string path, float layoutScale = 1F, bool requireNativeDpi = false)
     {
@@ -19,7 +78,7 @@ public sealed partial class MainForm
             audit.Check(auth.SelectedIndex != 0 || keyControls?.Enabled != true, "password mode disables private-key browse");
             wanted = false; SetConnectionControls(false);
             audit.Check(navigationButtons.Count == 5 && tabs.TabCount == 5, "five accessible navigation destinations");
-            audit.Check(Math.Abs(UiLayout.BaseFontPoints - 9.6F) < .01F && UiTheme.ContentScale == .8F, "content density is exactly 80 percent of the prior design");
+            audit.Check(Math.Abs(UiLayout.BaseFontPoints - (float)settings.FontSizePoints) < .01F && Math.Abs(UiTheme.ContentScale - .8F * settings.UiScalePercent / 100F) < .01F, "saved content scale and independent font size are applied");
             SelectPage(4); UiAcceptance.Settle(this);
             var folderField = tabs.TabPages[4].Controls.Find("settingsFolder", true).OfType<TextBox>().Single();
             audit.Check(folderField.ReadOnly && folderField.Text == Settings.Folder, "settings page displays the active configuration path");
@@ -58,7 +117,7 @@ public sealed partial class MainForm
             audit.ApplyDpi(this, audit.TargetDpi); audit.VerifyFontScaling(fonts, startDpi, audit.TargetDpi);
             audit.Check(windowIcon?.Width == 32 * audit.TargetDpi / 96, "window icon has requested pixel size");
             audit.Check(trayIcon?.Width == 16 * audit.TargetDpi / 96, "tray icon has requested pixel size");
-            bool compact = ClientSize.Width * 96.0 / DeviceDpi < UiTheme.Units(860);
+            bool compact = ClientSize.Width * 96.0 / DeviceDpi < Math.Max(UiTheme.Units(860), 688 * UiTheme.FontPoints / 9.6F);
             audit.Check(compactNavigation?.Visible == compact && sidebar?.Visible != compact, "navigation adapts without hiding destinations");
             for (int i = 0; i < tabs.TabCount; i++)
             {

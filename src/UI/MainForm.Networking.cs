@@ -34,13 +34,15 @@ public sealed partial class MainForm
         wanted = true;
         SetConnectionControls(true);
         state.Text = "● 正在连接…";
-        state.ForeColor = Color.DarkOrange;
+        SetConnectionIcon(ConnectionIconState.Connecting, "正在连接虚拟机");
+        state.ForeColor = Color.FromArgb(145, 83, 0);
         string endpoint = settings.Host + ":" + settings.Port;
         var options = new RelayConnectionOptions(settings.Host, settings.Port, settings.User,
             settings.SocksPort, settings.UseKey, settings.KeyPath, secret.Text, settings.EnableUdp);
         try
         {
-            Cleanup();
+            await Cleanup();
+            if (IsDisposed || formLifetime.IsCancellationRequested) return;
             TryDisableRules();
             var connected = await RelaySession.OpenAsync(options, fingerprint =>
             {
@@ -69,16 +71,17 @@ public sealed partial class MainForm
                 });
                 // Cancellation must release the SSH callback even when the UI is closing.
                 return decision.Task.WaitAsync(formLifetime.Token).GetAwaiter().GetResult();
-            }, Log, formLifetime.Token);
-            if (!wanted || IsDisposed) { connected.Dispose(); return; }
+            }, Log, formLifetime.Token, message => { if (Volatile.Read(ref settings).LogForwardingRequests) Log(message); });
+            if (!wanted || IsDisposed) { await connectionCleanup.Enqueue(connected, connected.DisposalCompleted); return; }
             session = connected;
+            connected.StartMonitoring(retry.Checked);
             ApplyRouteFiles();
             PresentPath();
             Log("中继已连接：127.0.0.1:" + settings.SocksPort + " → " + endpoint);
         }
         catch (Exception ex)
         {
-            Cleanup();
+            await Cleanup();
             if (IsDisposed || formLifetime.IsCancellationRequested) return;
             TryDisableRules();
             PresentPath(ex.Message);
@@ -87,7 +90,7 @@ public sealed partial class MainForm
         finally
         {
             busy = false;
-            nextRetry = DateTime.UtcNow.AddSeconds(15);
+            nextRetry = DateTime.UtcNow.AddSeconds(settings.ReconnectDelaySeconds);
             if (!IsDisposed) SetConnectionControls(session?.IsConnected == true);
         }
     }
@@ -97,23 +100,33 @@ public sealed partial class MainForm
         if (busy || polling || !wanted) return;
         if (session?.IsConnected != true)
         {
-            Cleanup();
-            TryDisableRules();
-            PresentPath("虚拟机不可用");
-            SetConnectionControls(false);
-            if (retry.Checked && DateTime.UtcNow >= nextRetry) await Connect(true);
+            polling = true;
+            try
+            {
+                TryDisableRules();
+                PresentPath("虚拟机不可用");
+                await Cleanup();
+                if (IsDisposed || !wanted) return;
+                SetConnectionControls(false);
+            }
+            finally { polling = false; }
+            if (wanted && retry.Checked && DateTime.UtcNow >= nextRetry) await Connect(true);
             return;
         }
         polling = true;
         var active = session;
         try
         {
-            bool alive = await active.RefreshAsync(retry.Checked);
+            // Transport health is maintained by the session's background loop.
+            // UI paint/log delays must never expire a live forwarding lease.
+            active.SetAutomaticRecovery(retry.Checked);
+            bool alive = active.IsConnected;
             // Disconnect or form closure invalidates all in-flight state publications.
             if (!ReferenceEquals(session, active) || !wanted || IsDisposed) return;
             if (!alive)
             {
-                Cleanup();
+                await Cleanup();
+                if (IsDisposed || !wanted) return;
                 TryDisableRules();
                 PresentPath("SSH 健康检查失败");
                 SetConnectionControls(false);
@@ -135,15 +148,18 @@ public sealed partial class MainForm
     {
         bool tcp = session?.Health.Tcp == true, udp = session?.Health.Udp == true && settings.EnableUdp;
         string payload = tcp || udp ? Rules.Compile(settings.Rules) : ClashRuleFile.DisabledPayload;
-        ClashRuleFile.Write(tcp ? payload : ClashRuleFile.DisabledPayload);
-        ClashRuleFile.WriteUdp(udp ? payload : ClashRuleFile.DisabledPayload);
+        bool tcpChanged = ClashRuleFile.Write(tcp ? payload : ClashRuleFile.DisabledPayload);
+        bool udpChanged = ClashRuleFile.WriteUdp(udp ? payload : ClashRuleFile.DisabledPayload);
+        if (tcpChanged || udpChanged) ClashRuleRefresh.Request(Log);
     }
     private void PresentPath(string? reason = null)
     {
         bool tcp = session?.Health.Tcp == true, udp = session?.Health.Udp == true && settings.EnableUdp;
         string key = tcp ? (udp ? "both" : settings.EnableUdp ? "tcp-only" : "tcp") : "host";
-        state.Text = tcp ? udp ? "● TCP + UDP" : "● TCP 已连接" : "● 宿主机路径";
-        state.ForeColor = key is "host" or "tcp-only" ? Color.DarkOrange : Color.SeaGreen;
+        SetConnectionIcon(!tcp ? ConnectionIconState.Disconnected : settings.EnableUdp && !udp ? ConnectionIconState.Degraded : ConnectionIconState.Connected,
+            !tcp ? "虚拟机未连接" : udp ? "虚拟机已连接 · TCP / UDP" : settings.EnableUdp ? "虚拟机已连接 · UDP 未就绪" : "虚拟机已连接 · TCP");
+        state.Text = tcp ? udp ? "● 已连接 · TCP / UDP" : settings.EnableUdp ? "● 仅 TCP · UDP 未就绪" : "● 已连接 · TCP" : "● 已回退 · 宿主机";
+        state.ForeColor = key is "host" or "tcp-only" ? Color.FromArgb(145, 83, 0) : Color.FromArgb(20, 105, 70);
         feed.Text = tcp ? udp ? "TCP / UDP 优先虚拟机 · 不可用时回退原有分流" : "TCP 经虚拟机 · UDP 使用宿主机原有分流" : "已请求回退宿主机原有分流 · 新连接自动生效";
         if (lastPath == key) return;
         string message = key switch
@@ -155,13 +171,15 @@ public sealed partial class MainForm
         };
         bool warning = key is "host" or "tcp-only";
         Log((warning ? "WARNING " : "INFO ") + message + (reason is null ? "" : " 原因：" + reason));
-        if (tray.Visible) tray.ShowBalloonTip(4000, "Host2VMRelay", message, warning ? ToolTipIcon.Warning : ToolTipIcon.Info);
+        if (tray.Visible && settings.ShowConnectionNotifications) tray.ShowBalloonTip(4000, "Host2VMRelay", message, warning ? ToolTipIcon.Warning : ToolTipIcon.Info);
         lastPath = key;
     }
-    private void Cleanup()
+    private Task Cleanup()
     {
-        session?.Dispose();
+        // Detach before yielding: in-flight probes can no longer update this session's UI.
+        var previous = session;
         session = null;
+        return connectionCleanup.Enqueue(previous, previous?.DisposalCompleted);
     }
     private void SetConnectionControls(bool connected)
     {
@@ -169,11 +187,34 @@ public sealed partial class MainForm
         foreach (var control in new Control[] { host, port, user, auth, keyPath, secret, socksPort, remember, enableUdp }) control.Enabled = !connected && !busy;
         if (keyControls is not null) keyControls.Enabled = !connected && !busy && auth.SelectedIndex == 1;
     }
-    private void Stop()
+    private async Task Stop()
     {
         if (busy) return;
-        wanted = false; Cleanup(); TryDisableRules(); SetConnectionControls(false); lastPath = "host";
-        state.Text = "● 已断开"; state.ForeColor = Color.DimGray; feed.Text = "宿主机原有分流 · 虚拟机中继已停用";
-        Log("已主动断开，恢复宿主机原有分流；不会自动重连。");
+        wanted = false; busy = true; SetConnectionControls(false);
+        state.Text = "● 正在断开…"; feed.Text = "正在后台释放连接，请稍候。";
+        SetConnectionIcon(ConnectionIconState.Connecting, "正在断开虚拟机");
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        Log("正在断开中继，后台清理连接资源。");
+        try
+        {
+            Task cleanup = Cleanup();
+            TryDisableRules();
+            await cleanup;
+            if (IsDisposed) return;
+            lastPath = "host";
+            state.Text = "● 已断开"; state.ForeColor = Color.DimGray; feed.Text = "宿主机原有分流 · 虚拟机中继已停用";
+            SetConnectionIcon(ConnectionIconState.Disconnected, "虚拟机已断开");
+            Log($"已主动断开，清理耗时 {elapsed.Elapsed.TotalSeconds:F1} 秒；不会自动重连。");
+        }
+        catch (Exception ex) { if (!IsDisposed) Error(ex); }
+        finally
+        {
+            busy = false;
+            if (!IsDisposed)
+            {
+                SetConnectionControls(false);
+                SetConnectionIcon(ConnectionIconState.Disconnected, "虚拟机已断开");
+            }
+        }
     }
 }

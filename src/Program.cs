@@ -9,7 +9,8 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
         if (args.Contains("--self-test")) { SelfTest.Run(args.Last()); return; }
-        bool smoke = args.Contains("--smoke");
+        bool startupCheck = args.Contains("--startup-check");
+        bool smoke = args.Contains("--smoke") || startupCheck;
         using var mutex = new Mutex(true, smoke ? "Local\\Host2VMRelay.Smoke" : "Local\\Host2VMRelay.Desktop", out bool first);
         if (!first) { if (smoke) Environment.ExitCode = 1; else MessageBox.Show("应用已在运行，请从系统托盘打开。", "Host2VMRelay"); return; }
         string? smokeOutput = smoke ? Path.GetFullPath(args.Last()) : null;
@@ -23,8 +24,10 @@ internal static class Program
                 ClashRuleFile.Folder = Path.Combine(folder, "smoke-rules");
             }
             if (!smoke) Settings.InitializeLocation();
+            UiTheme.Configure(Settings.Load());
             using var form = new MainForm();
-            if (smoke)
+            if (startupCheck) form.CheckStartup(smokeOutput!);
+            else if (smoke)
             {
                 string? scaleArgument = args.FirstOrDefault(a => a.StartsWith("--ui-scale=", StringComparison.Ordinal));
                 int percent = scaleArgument is null ? 100 : int.Parse(scaleArgument.Split('=')[1], CultureInfo.InvariantCulture);

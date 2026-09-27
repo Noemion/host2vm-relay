@@ -6,9 +6,9 @@ public sealed partial class MainForm
 {
     private TableLayoutPanel PageContent(string title)
     {
-        var page = new TabPage(title) { BackColor = UiTheme.Canvas, Padding = UiTheme.Spacing(2, 2, 10, 2), AutoScroll = true };
+        var page = new TabPage(title) { BackColor = UiTheme.Canvas, Padding = UiTheme.Spacing(2, 2, 10, 2) };
         var stack = UiLayout.Stack(); stack.BackColor = UiTheme.Canvas;
-        page.Controls.Add(stack); tabs.TabPages.Add(page); return stack;
+        page.Controls.Add(new PageScrollPanel(stack)); tabs.TabPages.Add(page); return stack;
     }
     private void BuildConnection()
     {
@@ -76,7 +76,8 @@ public sealed partial class MainForm
                 try
                 {
                     ApplyRouteFiles();
-                    Log("规则已保存；Clash 将重新读取本地规则文件。");
+                    summary.Text = "保存成功，已提交 Clash 规则同步；结果见运行日志。";
+                    Log("规则已保存；规则刷新结果将在日志中显示。");
                 }
                 catch (Exception ex)
                 {
@@ -85,12 +86,12 @@ public sealed partial class MainForm
             }
             catch (Exception ex) { Error(ex); }
         };
-        copyRules.Click += (_, _) => { try { Clipboard.SetText(ruleText.Text); summary.Text = "规则已复制"; } catch (Exception ex) { Error(ex); } };
+        copyRules.Click += (_, _) => { try { Clipboard.SetText(ruleText.Text); summary.Text = "规则已复制"; copyRules.ShowFeedback("✓ 已复制"); } catch (Exception ex) { Error(ex); } };
         UiLayout.Add(page, UiLayout.Card("规则列表", "每行一个目标。命中的 TCP / UDP 优先经过虚拟机，不可用时回退原有分流。",
             UiLayout.Actions(saveRules, copyRules), new EntryFrame(PrepareRulesEditor(), true, 260), summary));
         UiLayout.Add(page, UiLayout.Card("支持的格式", "",
             UiLayout.Help("精确域名  code.example.com\n域名及子域名  *.example.com\n单个 IP  10.20.30.40\n网段  10.20.30.0/24"),
-            UiLayout.Help("# 开头为注释。不填写协议、端口或网页路径。规则变更无需重新粘贴脚本；已有连接和 DNS 缓存可能需要刷新。")));
+            UiLayout.Help("# 开头为注释。不填写协议、端口或网页路径。规则变更无需重新粘贴脚本，但服务模式可能需要在 Clash 中重新应用配置；已有连接和 DNS 缓存可能需要刷新。")));
         TextBox PrepareRulesEditor()
         {
             ruleText.Multiline = true; ruleText.AcceptsReturn = true; ruleText.ScrollBars = ScrollBars.Both;
@@ -102,37 +103,53 @@ public sealed partial class MainForm
     {
         var page = PageContent("Clash 接入");
         var quickCopy = UiLayout.Primary("生成并复制", 150); var mergeScript = UiLayout.Button("合并已有脚本", 170);
+        var scriptFeedback = UiLayout.Help("");
         quickCopy.Click += (_, _) =>
         {
             try
             {
                 Clipboard.SetText(GenerateScript(null));
-                MessageBox.Show(this, "完整脚本已复制。请整体替换 Clash 当前订阅的扩展脚本，保存并重新应用。\nTUN 参数请在 Clash 设置界面配置。", "脚本已复制");
+                quickCopy.ShowFeedback("✓ 已生成并复制");
+                scriptFeedback.Text = ClashActivationGuide.Copied;
             }
             catch (Exception ex) { Error(ex); }
         };
+        ScriptDialog? workspace = null;
         mergeScript.Click += (_, _) =>
         {
-            using var dialog = new ScriptDialog(GenerateScript, existingClashScript);
-            dialog.ShowDialog(this); existingClashScript = dialog.OriginalScript;
+            if (workspace is null)
+            {
+                workspace = new ScriptDialog(GenerateScript, existingClashScript, embedded: true);
+                page.Parent!.Controls.Add(workspace);
+                workspace.BackRequested += (_, _) =>
+                {
+                    existingClashScript = workspace.OriginalScript;
+                    workspace.Hide(); page.Show();
+                };
+            }
+            page.Hide(); workspace.Show(); workspace.BringToFront();
         };
-        UiLayout.Add(page, UiLayout.Card("01  生成扩展脚本", "没有自定义脚本时直接生成；也可粘贴旧版完整脚本，只更新托管区并保留自定义逻辑。将完整结果粘贴到当前订阅的“编辑扩展脚本”，保存并应用。", UiLayout.Actions(quickCopy, mergeScript)));
+        UiLayout.Add(page, UiLayout.Card("01  生成扩展脚本", "没有自定义脚本时直接生成；也可粘贴旧版完整脚本，只更新托管区并保留自定义逻辑。将完整结果粘贴到当前订阅的“编辑扩展脚本”，保存并应用。", UiLayout.Actions(quickCopy, mergeScript), scriptFeedback));
+        UiLayout.Add(page, UiLayout.Card("使脚本生效", ClashActivationGuide.Steps));
         var tunDetails = UiLayout.Stack(); tunDetails.Name = "tunInstructions";
         UiLayout.Add(tunDetails, UiLayout.Help("模式：规则模式\n虚拟网卡：开启 TUN 与自动路由\nDNS 劫持：any:53、tcp://any:53\n路由排除：虚拟机 IPv4/32，或 IPv6/128"));
         UiLayout.Add(tunDetails, UiLayout.Help("不要排除需要转发的目标 IP。TUN 界面字段由 Clash 管理，扩展脚本不会覆盖这些字段。Fake-IP 规则需要支持 fake-ip-filter-mode: rule 的 Mihomo 内核。"));
         var toggle = UiLayout.Button("查看设置说明", 170); toggle.Name = "toggleTunGuide";
         toggle.Click += (_, _) => { tunDetails.Visible = !tunDetails.Visible; toggle.Text = tunDetails.Visible ? "收起设置说明" : "查看设置说明"; };
         var copyExclusion = UiLayout.Button("复制路由排除", 170);
+        var routeFeedback = UiLayout.Help("复制虚拟机地址后，粘贴到 Clash 的路由排除设置。");
         copyExclusion.Click += (_, _) =>
         {
             try
             {
                 if (!System.Net.IPAddress.TryParse(host.Text.Trim(), out var address)) throw new ArgumentException("请先填写正确的虚拟机 IP。");
                 Clipboard.SetText(address + (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? "/32" : "/128")); Log("虚拟机路由排除地址已复制。");
+                copyExclusion.ShowFeedback("✓ 已复制");
+                routeFeedback.Text = "复制成功：" + address + "，请粘贴到 Clash 的路由排除设置。";
             }
             catch (Exception ex) { Error(ex); }
         };
-        UiLayout.Add(page, UiLayout.Card("02  配置虚拟网卡", "在 Clash 设置界面完成 TUN、DNS 劫持和虚拟机路由排除。", UiLayout.Actions(toggle, copyExclusion), tunDetails));
+        UiLayout.Add(page, UiLayout.Card("02  配置虚拟网卡", "在 Clash 设置界面完成 TUN、DNS 劫持和虚拟机路由排除。", UiLayout.Actions(toggle, copyExclusion), routeFeedback, tunDetails));
         tunDetails.Visible = false;
         var testUrl = new TextBox { Text = settings.TestUrl, Name = "testUrl" };
         var test = UiLayout.Button("测试 SOCKS5 连通性", 220);
@@ -173,15 +190,24 @@ public sealed partial class MainForm
             copyLog.Enabled = exportLog.Enabled = clearLog.Enabled = log.TextLength > 0;
             counter.Text = log.TextLength == 0 ? "暂无日志" : log.Lines.Count(line => line.Length > 0) + " 条记录 · 仅保留本次运行日志";
         };
-        copyLog.Click += (_, _) => { try { if (log.TextLength > 0) Clipboard.SetText(log.Text); } catch (Exception ex) { Error(ex); } };
+        var logFeedback = UiLayout.Help("");
+        copyLog.Click += (_, _) =>
+        {
+            try
+            {
+                if (log.TextLength == 0) { logFeedback.Text = "暂无可复制的日志。"; return; }
+                Clipboard.SetText(log.Text); copyLog.ShowFeedback("✓ 已复制"); logFeedback.Text = "复制成功，日志已复制到剪贴板。";
+            }
+            catch (Exception ex) { logFeedback.Text = "复制失败，请重试。"; Error(ex); }
+        };
         exportLog.Click += (_, _) =>
         {
             using var dialog = new SaveFileDialog { Title = "导出运行日志", Filter = "文本文件|*.txt", FileName = "Host2VMRelay-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt", InitialDirectory = Settings.Folder };
-            if (dialog.ShowDialog(this) != DialogResult.OK) return;
-            try { File.WriteAllText(dialog.FileName, log.Text, new UTF8Encoding(false)); } catch (Exception ex) { Error(ex); }
+            if (dialog.ShowDialog(this) != DialogResult.OK) { logFeedback.Text = "已取消导出。"; return; }
+            try { File.WriteAllText(dialog.FileName, log.Text, new UTF8Encoding(false)); logFeedback.Text = "导出成功：" + dialog.FileName; } catch (Exception ex) { logFeedback.Text = "导出失败，请检查目标路径。"; Error(ex); }
         };
-        clearLog.Click += (_, _) => log.Clear();
-        UiLayout.Add(page, UiLayout.Card("活动记录", "", UiLayout.Actions(copyLog, exportLog, clearLog), UiLayout.Editor(log, 380, true), counter));
+        clearLog.Click += (_, _) => { pendingLogs.Clear(); log.Clear(); logFeedback.Text = "日志已清空。"; };
+        UiLayout.Add(page, UiLayout.Card("活动记录", "", UiLayout.Actions(copyLog, exportLog, clearLog), UiLayout.Editor(log, 380, true), counter, logFeedback));
         UiLayout.Add(page, UiLayout.Help("分享日志前请检查其中的主机地址、用户名等信息。清空仅影响当前日志，不会清除连接配置。"));
     }
 }

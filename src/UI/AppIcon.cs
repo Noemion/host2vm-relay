@@ -3,11 +3,54 @@ using System.Runtime.InteropServices;
 
 namespace Host2VMRelay;
 
+internal enum ConnectionIconState { Disconnected, Connecting, Connected, Degraded }
+
 internal static class AppIcon
 {
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool DestroyIcon(IntPtr icon);
+
+    public static Icon Load(int pixels, ConnectionIconState state)
+    {
+        using var original = Load(pixels);
+        using var bitmap = original.ToBitmap();
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            float diameter = bitmap.Width * .58F, edge = bitmap.Width - diameter - .5F;
+            var badge = new RectangleF(edge, edge, diameter, diameter);
+            Color color = state switch
+            {
+                ConnectionIconState.Connected => Color.FromArgb(22, 155, 91),
+                ConnectionIconState.Connecting => Color.FromArgb(205, 141, 20),
+                ConnectionIconState.Degraded => Color.FromArgb(193, 106, 15),
+                _ => Color.FromArgb(105, 116, 124)
+            };
+            using var fill = new SolidBrush(color);
+            using var outline = new Pen(Color.White, Math.Max(1, bitmap.Width / 24F));
+            graphics.FillEllipse(fill, badge); graphics.DrawEllipse(outline, badge);
+            using var glyph = new Pen(Color.White, Math.Max(1.2F, bitmap.Width / 16F))
+                { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+            PointF P(float x, float y) => new(edge + diameter * x, edge + diameter * y);
+            if (state == ConnectionIconState.Connected)
+                graphics.DrawLines(glyph, [P(.25F, .52F), P(.43F, .7F), P(.76F, .32F)]);
+            else if (state == ConnectionIconState.Connecting)
+            {
+                graphics.DrawLine(glyph, P(.5F, .25F), P(.5F, .52F));
+                graphics.DrawLine(glyph, P(.5F, .52F), P(.72F, .52F));
+            }
+            else if (state == ConnectionIconState.Degraded)
+            {
+                graphics.DrawLine(glyph, P(.5F, .23F), P(.5F, .52F));
+                graphics.DrawLine(glyph, P(.5F, .73F), P(.5F, .75F));
+            }
+            else graphics.DrawLine(glyph, P(.28F, .5F), P(.72F, .5F));
+        }
+        IntPtr handle = bitmap.GetHicon();
+        try { using var borrowed = Icon.FromHandle(handle); return (Icon)borrowed.Clone(); }
+        finally { DestroyIcon(handle); }
+    }
 
     public static Icon Load(int pixels)
     {

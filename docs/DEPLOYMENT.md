@@ -2,15 +2,27 @@
 
 ## Windows 客户端
 
-运行 `Host2VMRelay-0.6.2-win-universal-Setup.exe`。安装器携带 x64、x86、ARM64 三套程序并按系统选择；便携 ZIP 则按架构分别提供。应用依赖和 .NET 桌面运行时以 self-contained single-file 方式包含在 EXE 内，使用者无需编译，也无需在 Windows 安装 Python 或 Node.js。不是可脱离 Windows 的完全静态原生程序；临时目录需要可写。程序和安装包目前未签名。
+安装包按 x64、x86 和 ARM64 分别提供，每个架构对应一个 EXE 文件。安装版不包含运行时，需要同架构的 .NET 8 Windows Desktop Runtime（桌面运行时）。支持正式版 8.0.x，建议使用最新补丁。
 
-安装器使用当前用户权限。升级前从托盘退出旧程序；检测到同一用户的旧安装时先卸载后安装，保留配置文件和目录定位信息。Setup 的文件名明确标注 universal，不能把它误认为单个 AnyCPU 原生二进制。
+普通 .NET Runtime、ASP.NET Core Runtime、.NET Framework 和 .NET 6、7 均不能替代。仅安装 .NET 9 或 10 也不满足本版要求。无需安装开发用的 SDK。
+
+安装器使用当前用户权限。确认安装后，先检查微软安装器登记的运行时及实际文件，再卸载旧版。缺少依赖时显示微软下载地址并保留旧版，不自动下载或安装运行时。自定义路径下未注册的 .NET 不属于安装器的检测范围。
+
+便携 ZIP 仍包含运行时，可用于离线环境。Windows 客户端不需要 Python 或 Node.js。升级前从托盘退出旧程序，用户配置和目录定位信息会保留。程序和安装包目前未签名。
 
 ## 网络准备
 
 Windows 端需要 Clash Verge Rev／Mihomo，启用规则模式、TUN、自动路由、DNS 劫持，并将实际虚拟机 IP 加入 TUN 路由排除。应用本身不替用户修改 Windows 路由、防火墙和 Clash 的受管 TUN 字段。集成验证采用固定版本 Mihomo v1.19.31；旧核心需要检查 AND、PASS、fallback 以及 Fake-IP rule 模式支持情况。
 
 虚拟机需要 Linux／兼容 POSIX shell 的 SSH 环境，允许命令执行与 TCP 转发，能够访问目标网络；UDP 还要求 `python3` 可用。组件通过已校验指纹的 SSH 会话启动，不额外开放端口或安装服务。UDP 域名需要当前 Clash DNS 能解析，不能把仅存在于 VM hosts 中的名称视为自动支持。协议和回退范围见 `UDP_SUPPORT.md`。
+
+## 应用 Clash 脚本
+
+生成结果会先经过 JavaScript 静态语法检查，不执行用户代码。检查不能替代 Clash 的实际执行，也不能保证所有作用域错误、运行时错误或分流问题均可发现。
+
+复制或保存脚本不代表脚本已经生效。本软件暂不能自动应用 Clash 脚本或重启内核。请将完整结果粘贴到当前订阅的扩展脚本中，保存并重新应用配置。若仍未生效，在 Clash 界面重启内核；服务模式下若仍读取旧规则，请退出并重新打开 Clash，然后重新应用配置。重新打开目标网页，在 Clash 连接列表确认命中 Host2VMRelay。
+
+规则刷新接口返回成功仅表示请求已被接受。服务模式可能使用规则文件副本，不能据此认定最新规则已经生效。
 
 ## 配置目录
 

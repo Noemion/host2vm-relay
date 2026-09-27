@@ -1,0 +1,451 @@
+﻿[Code]
+var
+  ProgressPanel: TPanel;
+  ProgressCaption: TNewStaticText;
+  PhaseText, VersionText: String;
+  ProgressActive: Boolean;
+  PreviousFiles: TStringList;
+  PreviousVersionRemoved: Boolean;
+  InstallActions: TNewMemo;
+  UpgradeLogPath: String;
+  UpgradeLogLines: Integer;
+  UpgradeTimer: UINT_PTR;
+  InstallationProgressBase: Integer;
+  InstallProgress: TNewProgressBar;
+  ReportedProgress: Integer;
+
+procedure RefreshProgressHeader;
+begin
+  if not ProgressActive then Exit;
+  WizardForm.PageNameLabel.Caption := PhaseText;
+  WizardForm.PageDescriptionLabel.Caption := VersionText;
+end;
+
+procedure SetPhase(const Text: String);
+begin
+  PhaseText := Text;
+  RefreshProgressHeader;
+end;
+
+procedure SetVersion(const Text: String);
+begin
+  VersionText := Text;
+  RefreshProgressHeader;
+end;
+
+procedure ReportProgress(Value: Integer);
+begin
+  // Windows animates normal progress bars between reported positions. Keep our
+  // bar separate from Inno's byte counter so range changes cannot reset it.
+  if Value <= ReportedProgress then Exit;
+  if Value > 1000 then Value := 1000;
+  ReportedProgress := Value;
+  ProgressCaption.Caption := IntToStr(Value div 10) + '%';
+  InstallProgress.Position := Value;
+end;
+
+function SetTimer(hWnd: HWND; nIDEvent: UINT_PTR; uElapse: UINT; lpTimerFunc: NativeInt): UINT_PTR;
+  external 'SetTimer@user32.dll stdcall';
+function KillTimer(hWnd: HWND; nIDEvent: UINT_PTR): Boolean;
+  external 'KillTimer@user32.dll stdcall';
+
+function CreateActionLog(Parent: TWinControl; Top, Width, Height: Integer): TNewMemo;
+begin
+  Result := TNewMemo.Create(WizardForm);
+  Result.Parent := Parent;
+  Result.SetBounds(0, Top, Width, Height);
+  Result.ReadOnly := True;
+  Result.ScrollBars := ssBoth;
+  Result.WordWrap := False;
+  Result.Anchors := [akLeft, akTop, akRight, akBottom];
+end;
+
+procedure RecordAction(const Text: String);
+begin
+  InstallActions.Lines.Add(Text);
+  // Keep the on-screen history bounded; the setup log retains all operations.
+  if InstallActions.Lines.Count > 500 then InstallActions.Lines.Delete(0);
+  InstallActions.SelStart := Length(InstallActions.Text);
+  SendMessage(InstallActions.Handle, $00B7, 0, 0);
+  Log(Text);
+end;
+
+procedure ReadUpgradeLog;
+var
+  Lines: TStringList;
+  Data: AnsiString;
+  CompleteLength: Integer;
+  Line: String;
+begin
+  if (UpgradeLogPath = '') or not LoadStringFromLockedFile(UpgradeLogPath, Data) then Exit;
+  // A concurrent writer may have emitted only part of its last UTF-8 line.
+  CompleteLength := Length(Data);
+  while (CompleteLength > 0) and (Data[CompleteLength] <> #10) do Dec(CompleteLength);
+  Lines := TStringList.Create;
+  try
+    Lines.Text := UTF8Decode(Copy(Data, 1, CompleteLength));
+    while UpgradeLogLines < Lines.Count do
+    begin
+      Line := Lines[UpgradeLogLines];
+      Inc(UpgradeLogLines);
+      if Trim(Line) <> '' then RecordAction(Line);
+    end;
+  finally
+    Lines.Free;
+  end;
+end;
+
+// Count existing files before launching the old uninstaller. Never follow
+// junctions: the inventory must stay inside the old installation directory.
+procedure InventoryPreviousFiles(const Directory: String);
+var
+  Entry: TFindRec;
+  Path: String;
+begin
+  if FindFirst(AddBackslash(Directory) + '*', Entry) then
+  try
+    repeat
+      if (Entry.Name <> '.') and (Entry.Name <> '..') and
+         ((Entry.Attributes and $400) = 0) then
+      begin
+        Path := AddBackslash(Directory) + Entry.Name;
+        if (Entry.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+          InventoryPreviousFiles(Path)
+        else
+          PreviousFiles.Add(Path);
+      end;
+    until not FindNext(Entry);
+  finally
+    FindClose(Entry);
+  end;
+end;
+
+procedure UpgradeLogTimer(hWnd: HWND; Msg: UINT; TimerID: UINT_PTR; Time: DWORD);
+var
+  I, Removed: Integer;
+begin
+  ReadUpgradeLog;
+  Removed := 0;
+  for I := 0 to PreviousFiles.Count - 1 do
+    if not FileExists(PreviousFiles[I]) then Inc(Removed);
+  // File removal is measurable; process shutdown and registry cleanup are not.
+  // Reserve the end of this phase until the uninstaller reports success.
+  if PreviousFiles.Count > 0 then
+    ReportProgress(50 + MulDiv(Removed, 190, PreviousFiles.Count));
+end;
+
+procedure BeforeFileInstall;
+begin
+  RecordAction(CustomMessage('ActionWrite') + ' ' + ExpandConstant(CurrentFileName));
+end;
+
+procedure AfterFileInstall;
+begin
+  RecordAction(CustomMessage('ActionWritten') + ' ' + ExpandConstant(CurrentFileName));
+end;
+
+procedure RecordShortcut(const Path: String);
+begin
+  RecordAction(CustomMessage('ActionShortcut') + ' ' + ExpandConstant(Path) + '.lnk');
+end;
+
+// Three independent sections share the same insets and vertical rhythm.
+// Disable label autosizing before assigning bounds: an empty caption otherwise
+// collapses its height before the first progress update.
+function CreateProgressGroup(const Title: String; Top, Height: Integer): TPanel;
+var
+  Heading: TNewStaticText;
+  Divider: TPanel;
+begin
+  Result := TPanel.Create(WizardForm);
+  Result.Parent := ProgressPanel;
+  Result.BevelOuter := bvNone;
+  Result.ParentBackground := False;
+  Result.Color := clWindow;
+  Heading := TNewStaticText.Create(WizardForm);
+  Heading.Parent := Result;
+  Heading.Caption := Title;
+  Heading.Left := 0;
+  Heading.Top := 0;
+  Heading.Font.Size := 8;
+  Heading.Font.Color := $00666666;
+  Result.SetBounds(0, Top, ProgressPanel.Width, Height);
+  Result.Anchors := [akLeft, akTop, akRight];
+  if Top > 0 then
+  begin
+    Divider := TPanel.Create(WizardForm);
+    Divider.Parent := ProgressPanel;
+    Divider.BevelOuter := bvNone;
+    Divider.ParentBackground := False;
+    Divider.Color := $00E8E8E8;
+    Divider.SetBounds(0, Top - ScaleY(10), ProgressPanel.Width, ScaleY(1));
+    Divider.Anchors := [akLeft, akTop, akRight];
+  end;
+end;
+
+function CreateProgressLabel(Parent: TWinControl; Top: Integer): TNewStaticText;
+begin
+  Result := TNewStaticText.Create(WizardForm);
+  Result.Parent := Parent;
+  Result.AutoSize := False;
+  Result.SetBounds(0, Top, Parent.ClientWidth, ScaleY(24));
+  Result.Anchors := [akLeft, akTop, akRight];
+end;
+
+procedure InitializeWizard;
+var
+  Origin: TControl;
+  X, Y, HeaderBottom, ContentBottom, DetailsTop, DetailsHeadingHeight: Integer;
+  OverviewGroup, DetailsGroup: TPanel;
+begin
+  WizardForm.WizardSmallBitmapImage.Visible := False;
+  PreviousFiles := TStringList.Create;
+  // Parent the shared surface to the form, not a notebook page. Internal page
+  // changes during preparation and installation cannot hide or reset it.
+  Origin := WizardForm.InstallingPage;
+  X := 0;
+  Y := 0;
+  while Origin <> WizardForm do
+  begin
+    X := X + Origin.Left;
+    Y := Y + Origin.Top;
+    Origin := Origin.Parent;
+  end;
+  ContentBottom := Y + WizardForm.InstallingPage.Height;
+  // The stock description reserves multiple lines. Our active-install header
+  // is one line, so position the surface below its text rather than below the
+  // stock notebook. Keep the bottom fixed and give the recovered space to logs.
+  Origin := WizardForm.PageDescriptionLabel;
+  HeaderBottom := ScaleY(22);
+  while Origin <> WizardForm do
+  begin
+    HeaderBottom := HeaderBottom + Origin.Top;
+    Origin := Origin.Parent;
+  end;
+  if HeaderBottom + ScaleY(8) < Y then Y := HeaderBottom + ScaleY(8);
+  ProgressPanel := TPanel.Create(WizardForm);
+  ProgressPanel.Parent := WizardForm;
+  ProgressPanel.SetBounds(X, Y, WizardForm.InstallingPage.Width, ContentBottom - Y);
+  ProgressPanel.BevelOuter := bvNone;
+  ProgressPanel.Anchors := [akLeft, akTop, akRight, akBottom];
+  ProgressPanel.Visible := False;
+  ProgressPanel.ParentBackground := False;
+  ProgressPanel.Color := clWindow;
+  VersionText := 'Host2VMRelay {#AppVersion}';
+  // Put the version and changing phase in the existing wizard header. Reserve
+  // at least 72% of the content surface for the log, excluding its heading.
+  DetailsTop := MulDiv(WizardForm.InstallingPage.Height, 20, 100);
+  DetailsHeadingHeight := MulDiv(WizardForm.InstallingPage.Height, 8, 100);
+  OverviewGroup := CreateProgressGroup(CustomMessage('ProgressSection'), 0, DetailsTop - ScaleY(10));
+  ProgressCaption := CreateProgressLabel(OverviewGroup, 0);
+  ProgressCaption.Left := OverviewGroup.Width - ScaleX(72);
+  ProgressCaption.Width := ScaleX(72);
+  ProgressCaption.Alignment := taRightJustify;
+  ProgressCaption.Anchors := [akTop, akRight];
+  InstallProgress := TNewProgressBar.Create(WizardForm);
+  InstallProgress.Parent := OverviewGroup;
+  InstallProgress.SetBounds(0, ScaleY(20), OverviewGroup.Width, ScaleY(10));
+  InstallProgress.Anchors := [akLeft, akTop, akRight];
+  InstallProgress.Max := 1000;
+  WizardForm.ProgressGauge.Visible := False;
+
+  DetailsGroup := CreateProgressGroup(CustomMessage('DetailsSection'), DetailsTop, ProgressPanel.Height - DetailsTop);
+  DetailsGroup.Anchors := [akLeft, akTop, akRight, akBottom];
+  InstallActions := CreateActionLog(DetailsGroup, DetailsHeadingHeight,
+    DetailsGroup.Width, DetailsGroup.Height - DetailsHeadingHeight);
+  InstallActions.Left := 0;
+  InstallActions.BorderStyle := bsNone;
+  InstallActions.Color := clWindow;
+  InstallActions.Font.Size := 8;
+  ReportedProgress := -1;
+  ReportProgress(0);
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if CurPageID = wpFinished then
+  begin
+    ProgressActive := False;
+    ProgressPanel.Visible := False;
+  end
+  else if ProgressActive then
+  begin
+    RefreshProgressHeader;
+    ProgressPanel.BringToFront;
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+  begin
+    ReportProgress(InstallationProgressBase);
+    SetPhase(CustomMessage('ActionInstall'));
+    RecordAction(CustomMessage('ActionInstall'))
+  end
+  else if CurStep = ssPostInstall then
+  begin
+    SetPhase(CustomMessage('ActionComplete'));
+    ReportProgress(1000);
+    RecordAction(CustomMessage('ActionComplete'));
+  end;
+end;
+
+procedure CurInstallProgressChanged(CurProgress, MaxProgress: Integer);
+begin
+  // Preparation and old-version removal occupy 0..250. Reserve the last
+  // 5% for shortcuts, registry entries and other finalization, so a completed
+  // byte counter never advertises success before ssPostInstall.
+  if MaxProgress > 0 then
+  begin
+    ReportProgress(InstallationProgressBase +
+      MulDiv(CurProgress, 950 - InstallationProgressBase, MaxProgress));
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  UninstallString: String;
+  UninstallExecutable: String;
+  PreviousVersion: String;
+  Command: String;
+  ResultCode: Integer;
+  Started: Boolean;
+begin
+  Result := '';
+  ProgressActive := True;
+  ProgressPanel.Visible := True;
+  ProgressPanel.BringToFront;
+  SetPhase(CustomMessage('ActionPrerequisites'));
+  WizardForm.Repaint;
+  // Check prerequisites after the wizard is visible, before removing any old files.
+  if not HasDesktopRuntime then
+  begin
+    Result := CustomMessage('RuntimeMissing');
+    RecordAction(Result);
+    ProgressActive := False;
+    ProgressPanel.Visible := False;
+    Exit;
+  end;
+  // Preparation can run again after a later prerequisite check fails.
+  if PreviousVersionRemoved then
+    Exit;
+  ReportProgress(30);
+  RecordAction(CustomMessage('ActionDetect'));
+  InstallationProgressBase := 250;
+  if RegQueryStringValue(
+       HKCU,
+       '{#UninstallRegistryKey}',
+       'UninstallString',
+       UninstallString) then
+  begin
+    if RegQueryStringValue(HKCU, '{#UninstallRegistryKey}', 'DisplayVersion', PreviousVersion) then
+    begin
+      if PreviousVersion = '{#AppVersion}' then
+        SetVersion(FmtMessage(CustomMessage('ReinstallVersion'), ['{#AppVersion}']))
+      else
+        SetVersion(PreviousVersion + '  →  {#AppVersion}');
+    end;
+    SetPhase(CustomMessage('UpgradeRemoving'));
+    try
+      ReportProgress(50);
+      RecordAction(CustomMessage('UpgradeRemoving'));
+      UpgradeLogPath := ExpandConstant('{tmp}\previous-version-uninstall.log');
+      DeleteFile(UpgradeLogPath);
+      UpgradeLogLines := 0;
+      // Our Inno registration contains a quoted executable path, not a shell
+      // command. Pass arguments separately instead of interpreting registry text.
+      UninstallExecutable := RemoveQuotes(UninstallString);
+      PreviousFiles.Clear;
+      InventoryPreviousFiles(ExtractFileDir(UninstallExecutable));
+      Command := '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /LOG="' + UpgradeLogPath + '"';
+      RecordAction(CustomMessage('ActionCommand') + ' "' + UninstallExecutable + '" ' + Command);
+      UpgradeTimer := SetTimer(0, 0, 250, CreateCallback(@UpgradeLogTimer));
+      Log('Upgrade: removing the previous version after installation confirmation.');
+      Started := Exec(
+           UninstallExecutable,
+           Command,
+           '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      ReadUpgradeLog;
+      if not Started then
+        Result := FmtMessage(CustomMessage('UpgradeLaunchFailed'), [SysErrorMessage(ResultCode)])
+      else if ResultCode <> 0 then
+        Result := FmtMessage(CustomMessage('UpgradeRemoveFailed'), [IntToStr(ResultCode)])
+      else
+      begin
+        PreviousVersionRemoved := True;
+        InstallationProgressBase := 250;
+        ReportProgress(250);
+        RecordAction(CustomMessage('ActionPrepared'));
+        Log('Upgrade: previous version removed; continuing installation.');
+      end;
+      if Result <> '' then
+        RecordAction(Result);
+    finally
+      if UpgradeTimer <> 0 then KillTimer(0, UpgradeTimer);
+      UpgradeTimer := 0;
+      ReadUpgradeLog;
+      if Result <> '' then
+      begin
+        ProgressActive := False;
+        ProgressPanel.Visible := False;
+      end;
+    end;
+  end
+  else
+  begin
+    SetVersion(CustomMessage('FreshVersion') + ' {#AppVersion}');
+    ReportProgress(250);
+    RecordAction(CustomMessage('ActionFresh'));
+  end;
+end;
+
+// User configuration and its location pointer are intentionally retained.
+
+[CustomMessages]
+zhcn.VersionSection=版本信息
+en.VersionSection=Version
+zhcn.ProgressSection=安装总进度
+en.ProgressSection=Overall progress
+zhcn.DetailsSection=操作详情
+en.DetailsSection=Operation details
+zhcn.ReinstallVersion=重新安装 %1
+en.ReinstallVersion=Reinstall %1
+zhcn.FreshVersion=首次安装
+en.FreshVersion=New installation
+zhcn.TotalProgress=总进度：
+en.TotalProgress=Overall progress:
+zhcn.ActionPrerequisites=正在检查安装条件。
+en.ActionPrerequisites=Checking installation requirements.
+zhcn.UpgradeVersion=正在从 %1 升级至 %2。
+en.UpgradeVersion=Upgrading from %1 to %2.
+zhcn.ActionWrite=正在写入文件：
+zhcn.ActionWritten=文件处理完成：
+zhcn.ActionShortcut=正在创建快捷方式：
+zhcn.ActionCommand=正在执行命令：
+en.ActionWrite=Writing file:
+en.ActionWritten=File processed:
+en.ActionShortcut=Creating shortcut:
+en.ActionCommand=Executing command:
+zhcn.ActionDetect=正在检测已有版本。
+zhcn.ActionPrepared=版本升级准备完成，现有配置已保留。
+zhcn.ActionFresh=未检测到已有版本，将进行首次安装。
+zhcn.ActionInstall=正在安装文件和创建快捷方式。
+zhcn.ActionComplete=安装完成。
+en.ActionDetect=Checking for an existing version.
+en.ActionPrepared=Upgrade preparation complete. Existing settings have been retained.
+en.ActionFresh=No existing version found. Starting a new installation.
+en.ActionInstall=Installing files and creating shortcuts.
+en.ActionComplete=Installation complete.
+zhcn.UpgradeTitle=正在升级 Host2VMRelay
+zhcn.UpgradeDescription=正在准备新版本，请稍候。
+zhcn.UpgradeRemoving=正在升级版本……
+zhcn.UpgradeKeepSettings=现有配置将保留，完成后将自动继续安装。
+zhcn.UpgradeLaunchFailed=无法启动旧版本卸载程序：%1。请处理后重试。
+zhcn.UpgradeRemoveFailed=旧版本卸载失败（退出代码：%1）。安装已停止，请处理后重试。
+en.UpgradeTitle=Upgrading Host2VMRelay
+en.UpgradeDescription=Preparing the new version. Please wait.
+en.UpgradeRemoving=Upgrading to the new version...
+en.UpgradeKeepSettings=Your settings will be retained. Installation will continue automatically.
+en.UpgradeLaunchFailed=Could not start the previous version's uninstaller: %1. Resolve the problem and retry.
+en.UpgradeRemoveFailed=The previous version could not be removed (exit code: %1). Installation has stopped. Resolve the problem and retry.

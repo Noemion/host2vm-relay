@@ -31,3 +31,24 @@ for (const name of ['fresh', 'updated', 'v040Updated', 'v1Updated', 'v1UserEdite
   checks++; console.log('PASS actual C# incremental result: '+name);
 }
 console.log('PASS '+checks+' incremental C# outputs, preserved custom logic, managed TUN settings and Mieru UDP');
+
+// No global config: Clash supplies it only when invoking the entry point.
+const fragmentContext = vm.createContext({});
+vm.runInContext(cases.fragment, fragmentContext, {timeout:1000});
+const fragmentResult = vm.runInContext('main({proxies:[{type:"mieru",udp:false}],rules:[]}, "fragment-test")', fragmentContext, {timeout:1000});
+assert.equal(fragmentResult.proxies[0].udp, true);
+assert.equal(fragmentResult.fragmentRan, 'fragment-test');
+console.log('PASS config fragment executes only when main receives config');
+
+for (const [name, code] of Object.entries(cases).filter(([name]) => name.startsWith('form-'))) {
+  const context = vm.createContext({});
+  vm.runInContext(code, context, {timeout:1000});
+  for (const profile of ['first', 'second']) {
+    context.input = {proxies:[],rules:[]};
+    context.profile = profile;
+    const result = vm.runInContext('main(input, profile)', context, {timeout:1000});
+    assert.equal(result.form, profile, name);
+    assert.equal(result.proxies.filter(p=>p.name === 'Host2VMRelay').length, 1);
+  }
+  console.log('PASS automatic input handling: ' + name);
+}

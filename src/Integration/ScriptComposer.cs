@@ -24,7 +24,11 @@ public static class ScriptComposer
     private const string ClosingWrapper = "  return typeof main === \"function\" ? main : null;\n})();\n\n";
     private const string VersionPrefix = "// generator-version: ";
     private const string HashPrefix = "// managed-sha256: ";
-    private const string GeneratorVersion = "0.6.2";
+    // Defer user code until Clash supplies config. An outer shadow prevents a
+    // fragment without its own main from accidentally calling our managed main.
+    private const string DeferredOpen = "const __h2vmOriginalMain = (config, profileName) => {\n  const main = undefined;\n  return (() => {\n";
+    private const string DeferredClose = "  return typeof main === \"function\" ? main(config, profileName) : config;\n  })();\n};\n\n";
+    private const string GeneratorVersion = "0.6.3";
     private static readonly HashSet<string> LegacyFingerprints = new(StringComparer.Ordinal)
     {
         "b0b8a56bc87d85fe2bec2b63349965a7de3c7f00660dfa3d2a4a7412d76d138f", // 0.4.1-0.5.0
@@ -54,9 +58,17 @@ public static class ScriptComposer
         CheckUserSource(original);
         string managed = CanonicalManaged(relayScript);
         if (managed.Length == 0 || ContainsReservedMarker(managed)) throw new ArgumentException("托管模板为空或包含保留的区域标记。");
-        return Header + VersionPrefix + GeneratorVersion + "\n" + HashPrefix + Digest(managed) + "\n" +
-            Open + UserStart + original + "\n" + UserEnd + ClosingWrapper +
+        string result = Header + VersionPrefix + GeneratorVersion + "\n" + HashPrefix + Digest(managed) + "\n" +
+            DeferredOpen + UserStart + original + "\n" + UserEnd + DeferredClose +
             ManagedStart + managed + "\n" + ManagedEnd;
+        // Parse the composed program so function-body fragments (including return)
+        // are checked in their actual scope. Never execute user code for validation.
+        try { new Esprima.JavaScriptParser().ParseScript(result); }
+        catch (Esprima.ParserException ex)
+        {
+            throw new FormatException("脚本语法校验失败（完整脚本位置）：" + ex.Message, ex);
+        }
+        return result;
     }
     private static ScriptImport ReadV2(string source)
     {
@@ -65,7 +77,8 @@ public static class ScriptComposer
         string expected = ReadMetadata(source, ref position, HashPrefix);
         if (!Regex.IsMatch(version, @"^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$") ||
             !Regex.IsMatch(expected, "^[a-f0-9]{64}$")) throw Conflict("生成脚本元数据已损坏。");
-        string before = Open + UserStart;
+        bool deferred = source.AsSpan(position).StartsWith(DeferredOpen, StringComparison.Ordinal);
+        string before = (deferred ? DeferredOpen : Open) + UserStart;
         if (!source.AsSpan(position).StartsWith(before, StringComparison.Ordinal)) throw Conflict("原始脚本包装结构已修改。");
         position += before.Length;
         string boundary = "\n" + UserEnd;
@@ -74,7 +87,7 @@ public static class ScriptComposer
             throw Conflict("原始脚本区域缺失或重复。");
         string original = source[position..end];
         position = end + boundary.Length;
-        string after = ClosingWrapper + ManagedStart;
+        string after = (deferred ? DeferredClose : ClosingWrapper) + ManagedStart;
         if (!source.AsSpan(position).StartsWith(after, StringComparison.Ordinal)) throw Conflict("用户区与托管区之间的结构已修改。");
         position += after.Length;
         string trailer = "\n" + ManagedEnd;

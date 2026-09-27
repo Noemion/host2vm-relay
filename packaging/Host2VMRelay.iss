@@ -5,7 +5,10 @@
   #define OutputRoot "..\artifacts\release"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.6.2"
+  #define AppVersion "0.6.3"
+#endif
+#ifndef AppArch
+  #define AppArch "x64"
 #endif
 
 [Setup]
@@ -20,19 +23,28 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 MinVersion=10.0.14393
 SetupArchitecture=x86
-ArchitecturesInstallIn64BitMode=x64os or arm64
+#if AppArch == "x64"
+ArchitecturesAllowed=x64os
+ArchitecturesInstallIn64BitMode=x64os
+#elif AppArch == "arm64"
+ArchitecturesAllowed=arm64
+ArchitecturesInstallIn64BitMode=arm64
+#elif AppArch == "x86"
+ArchitecturesAllowed=x86os
+#else
+  #error Unsupported AppArch
+#endif
 OutputDir={#OutputRoot}
-OutputBaseFilename=Host2VMRelay-{#AppVersion}-win-universal-Setup
+OutputBaseFilename=Host2VMRelay-{#AppVersion}-win-{#AppArch}-Setup
 Compression=lzma2/fast
 SolidCompression=no
-WizardStyle=modern
 SetupIconFile=..\artifacts\assets\Host2VMRelay.Setup.ico
 UninstallDisplayIcon={app}\Host2VMRelay.exe
 CloseApplications=yes
 RestartApplications=no
 AppMutex=Local\Host2VMRelay.Desktop
 SetupLogging=yes
-VersionInfoDescription=Host2VMRelay offline installer
+VersionInfoDescription=Host2VMRelay {#AppArch} installer
 
 [Languages]
 Name: "zhcn"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
@@ -42,43 +54,17 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#PayloadRoot}\win-x64\Host2VMRelay.exe"; DestDir: "{app}"; Flags: ignoreversion; Check: IsX64OS
-Source: "{#PayloadRoot}\win-x86\Host2VMRelay.exe"; DestDir: "{app}"; Flags: ignoreversion; Check: IsX86OS
-Source: "{#PayloadRoot}\win-arm64\Host2VMRelay.exe"; DestDir: "{app}"; Flags: ignoreversion; Check: IsArm64
-Source: "{#PayloadRoot}\common\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadRoot}\installer\win-{#AppArch}\Host2VMRelay.exe"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: BeforeFileInstall; AfterInstall: AfterFileInstall
+Source: "{#PayloadRoot}\common\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; BeforeInstall: BeforeFileInstall; AfterInstall: AfterFileInstall
 
 [Icons]
-Name: "{group}\Host2VMRelay"; Filename: "{app}\Host2VMRelay.exe"
-Name: "{autodesktop}\Host2VMRelay"; Filename: "{app}\Host2VMRelay.exe"; Tasks: desktopicon
+Name: "{group}\Host2VMRelay"; Filename: "{app}\Host2VMRelay.exe"; BeforeInstall: RecordShortcut('{group}\Host2VMRelay')
+Name: "{autodesktop}\Host2VMRelay"; Filename: "{app}\Host2VMRelay.exe"; Tasks: desktopicon; BeforeInstall: RecordShortcut('{autodesktop}\Host2VMRelay')
 
 [Run]
 Filename: "{app}\Host2VMRelay.exe"; Description: "{cm:LaunchProgram,Host2VMRelay}"; Flags: nowait postinstall skipifsilent
 
-[Code]
-function InitializeSetup(): Boolean;
-var
-  UninstallString: String;
-  ResultCode: Integer;
-begin
-  Result := True;
-  if RegQueryStringValue(
-       HKCU,
-       'Software\Microsoft\Windows\CurrentVersion\Uninstall\{B49F96CE-C602-4C52-A415-61A77A0B4BE7}_is1',
-       'UninstallString',
-       UninstallString) then
-  begin
-    if not Exec(
-         RemoveQuotes(UninstallString),
-         '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS',
-         '',
-         SW_HIDE,
-         ewWaitUntilTerminated,
-         ResultCode) or (ResultCode <> 0) then
-    begin
-      MsgBox('无法卸载现有 Host2VMRelay，请先手动卸载后重试。', mbError, MB_OK);
-      Result := False;
-    end;
-  end;
-end;
-
-// User configuration and its location pointer are intentionally retained.
+#define UninstallRegistryKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{B49F96CE-C602-4C52-A415-61A77A0B4BE7}_is1"
+#include "RuntimeRequirement.iss"
+#include "InstallerFlow.iss"
+#include "InstallerAppearance.iss"

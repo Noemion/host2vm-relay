@@ -18,13 +18,15 @@ internal sealed class RelaySocksServer : IDisposable
     private readonly ConcurrentDictionary<TcpClient, byte> clients = new();
     private readonly SemaphoreSlim slots = new(128);
     private readonly TimeSpan udpIdleTimeout;
+    private readonly Action<string>? log;
     public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
     internal int ActiveConnections => clients.Count;
     public bool TcpHealthy { get { var s = Volatile.Read(ref upstream); return s.Port > 0 && Environment.TickCount64 < s.Expires; } }
     public bool UdpHealthy => Volatile.Read(ref upstream).Udp?.Healthy == true;
 
-    public RelaySocksServer(int port, TimeSpan? udpIdleTimeout = null)
+    public RelaySocksServer(int port, TimeSpan? udpIdleTimeout = null, Action<string>? log = null)
     {
+        this.log = log;
         this.udpIdleTimeout = udpIdleTimeout ?? TimeSpan.FromMinutes(2);
         if (this.udpIdleTimeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(udpIdleTimeout));
         listener = new TcpListener(IPAddress.Loopback, port); listener.Start(128); _ = AcceptAsync();
@@ -68,8 +70,15 @@ internal sealed class RelaySocksServer : IDisposable
         _ => throw new IOException("Invalid address.")
     };
     private static byte[] Reply(byte code, int port = 0) => new byte[] { 5, code, 0, 1, 127, 0, 0, 1, (byte)(port >> 8), (byte)port };
+    private void Trace(string message)
+    {
+        // Diagnostic callbacks must never interrupt transport or expose payloads.
+        try { log?.Invoke(message.Replace('\r', ' ').Replace('\n', ' ')); } catch { }
+    }
+    private static string Destination(byte[] address) => Host(address) + ":" + BinaryPrimitives.ReadUInt16BigEndian(address.AsSpan(address.Length - 2));
     private async Task ServeAsync(TcpClient client)
     {
+        string? target = null;
         using (client)
         using (var tokenSource = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token))
         {
@@ -88,6 +97,7 @@ internal sealed class RelaySocksServer : IDisposable
                 {
                     await stream.WriteAsync(Reply(0), token).ConfigureAwait(false); await HealthAsync(stream, token).ConfigureAwait(false); return;
                 }
+                if (request[1] == 1) { target = Destination(address); Trace("TCP 请求：" + target); }
                 Upstream state = Volatile.Read(ref upstream);
                 if (request[1] == 3)
                 {
@@ -100,7 +110,7 @@ internal sealed class RelaySocksServer : IDisposable
                 }
                 else if (request[1] == 1)
                 {
-                    if (!TcpHealthy) { await stream.WriteAsync(Reply(1), token).ConfigureAwait(false); return; }
+                    if (!TcpHealthy) { Trace("TCP 拒绝：" + target + "，隧道尚未就绪。"); await stream.WriteAsync(Reply(1), token).ConfigureAwait(false); return; }
                     using var remote = new TcpClient { NoDelay = true };
                     await remote.ConnectAsync(IPAddress.Loopback, state.Port, token).ConfigureAwait(false);
                     var tunnel = remote.GetStream();
@@ -110,32 +120,65 @@ internal sealed class RelaySocksServer : IDisposable
                     byte[] header = await ReadAsync(tunnel, 4, token).ConfigureAwait(false);
                     byte[] bound = await AddressAsync(tunnel, header[3], token).ConfigureAwait(false);
                     await stream.WriteAsync(header[..3].Concat(bound).ToArray(), token).ConfigureAwait(false);
-                    if (header[1] != 0) return;
+                    if (header[1] != 0) { Trace("TCP 转发失败：" + target + "，上游 SOCKS 状态 " + header[1]); return; }
+                    Trace("TCP 已建立虚拟机转发：" + target);
                     tokenSource.CancelAfter(Timeout.InfiniteTimeSpan);
                     await DuplexRelay.RunAsync(stream, tunnel,
                         () => client.Client.Shutdown(SocketShutdown.Send),
                         () => remote.Client.Shutdown(SocketShutdown.Send),
-                        () => { client.Dispose(); remote.Dispose(); }, token).ConfigureAwait(false);
+                        () => { client.Dispose(); remote.Dispose(); }, token,
+                        (fromClient, bytes, reason) => Trace("TCP " + (fromClient ? "客户端→虚拟机" : "虚拟机→客户端") +
+                            "：" + target + "，已转发 " + bytes + " 字节，" + reason)).ConfigureAwait(false);
                 }
                 else await stream.WriteAsync(Reply(7), token).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException or OperationCanceledException) { }
-            finally { clients.TryRemove(client, out _); slots.Release(); }
+            catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException or OperationCanceledException)
+            { if (target is not null && !lifetime.IsCancellationRequested) Trace("TCP 连接结束：" + target + "，" + ex.Message); }
+            finally { if (target is not null) Trace("TCP 已关闭：" + target); clients.TryRemove(client, out _); slots.Release(); }
         }
     }
     private async Task HealthAsync(Stream stream, CancellationToken token)
     {
-        using var request = new MemoryStream(); byte[] one = new byte[1];
-        while (request.Length < 8192)
+        // Mihomo unified-delay sends a second HEAD over the same SOCKS stream.
+        // Bound both header size and request count; the caller's deadline also
+        // limits idle connections. Reevaluate health for every request.
+        byte[] one = new byte[1];
+        for (int count = 0; count < 16; count++)
         {
-            await stream.ReadExactlyAsync(one, token).ConfigureAwait(false); request.WriteByte(one[0]);
-            if (request.Length >= 4 && request.GetBuffer().AsSpan((int)request.Length - 4, 4).SequenceEqual("\r\n\r\n"u8)) break;
+            using var request = new MemoryStream();
+            bool complete = false;
+            while (request.Length < 8192)
+            {
+                if (await stream.ReadAsync(one, token).ConfigureAwait(false) == 0) return;
+                request.WriteByte(one[0]);
+                if (request.Length >= 4 && request.GetBuffer().AsSpan((int)request.Length - 4, 4).SequenceEqual("\r\n\r\n"u8))
+                { complete = true; break; }
+            }
+            if (!complete) return;
+            string[] lines = Encoding.ASCII.GetString(request.ToArray()).Split("\r\n", StringSplitOptions.None);
+            string[] first = lines[0].Split(' ');
+            if (first.Length != 3 || (first[0] != "HEAD" && first[0] != "GET")) return;
+            bool close = first[2] != "HTTP/1.1" || count == 15;
+            foreach (string header in lines.Skip(1))
+            {
+                int colon = header.IndexOf(':');
+                if (colon < 0) continue;
+                string name = header[..colon].Trim(), value = header[(colon + 1)..].Trim();
+                // Only bodyless probes are supported. Never parse a body as the
+                // next request or leave bytes that corrupt connection reuse.
+                if (name.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase) ||
+                    (name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase) && value != "0")) return;
+                if (name.Equals("Connection", StringComparison.OrdinalIgnoreCase) &&
+                    value.Split(',').Any(v => v.Trim().Equals("close", StringComparison.OrdinalIgnoreCase))) close = true;
+            }
+            bool healthy = first[1] == "/tcp" ? TcpHealthy : first[1] == "/udp" && UdpHealthy;
+            byte[] response = Encoding.ASCII.GetBytes("HTTP/1.1 " + (healthy ? "204 No Content" : "503 Unavailable") +
+                "\r\nContent-Length: 0\r\nConnection: " + (close ? "close" : "keep-alive") + "\r\n\r\n");
+            await stream.WriteAsync(response, token).ConfigureAwait(false);
+            if (close) return;
         }
-        string line = Encoding.ASCII.GetString(request.ToArray()).Split('\n')[0];
-        bool healthy = line.Contains(" /tcp ", StringComparison.Ordinal) ? TcpHealthy : line.Contains(" /udp ", StringComparison.Ordinal) && UdpHealthy;
-        byte[] response = Encoding.ASCII.GetBytes("HTTP/1.1 " + (healthy ? "204 No Content" : "503 Unavailable") + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-        await stream.WriteAsync(response, token).ConfigureAwait(false);
     }
+
     private static bool ValidDatagram(byte[] packet)
     {
         if (packet.Length < 7 || packet.Length > 65769 || packet[0] != 0 || packet[1] != 0 || packet[2] != 0) return false;
@@ -147,6 +190,7 @@ internal sealed class RelaySocksServer : IDisposable
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(token, tunnel.Stopped);
         using var socket = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         var replies = Channel.CreateBounded<byte[]>(64); IPEndPoint? peer = expectedPort == 0 ? null : new(IPAddress.Loopback, expectedPort);
+        var reportedTargets = new HashSet<string>(StringComparer.Ordinal);
         uint id = tunnel.Register(packet => replies.Writer.TryWrite(packet));
         try
         {
@@ -161,7 +205,14 @@ internal sealed class RelaySocksServer : IDisposable
                     if (expected is not null && !expected.Equals(incoming.RemoteEndPoint)) continue;
                     Interlocked.CompareExchange(ref peer, incoming.RemoteEndPoint, null);
                     // Activity means successfully queued/sent traffic in either direction.
-                    if (tunnel.Send(id, incoming.Buffer)) stop.CancelAfter(udpIdleTimeout);
+                    if (tunnel.Send(id, incoming.Buffer))
+                    {
+                        stop.CancelAfter(udpIdleTimeout);
+                        // Log the first datagram per destination, not every packet.
+                        string destination = Destination(incoming.Buffer[3..(incoming.Buffer[3] == 1 ? 10 : incoming.Buffer[3] == 4 ? 22 : 7 + incoming.Buffer[4])]);
+                        if (reportedTargets.Count < 128 && reportedTargets.Add(destination))
+                            Trace("UDP 已提交虚拟机转发：" + destination);
+                    }
                 }
             }
             async Task Send()

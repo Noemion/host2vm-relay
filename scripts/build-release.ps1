@@ -26,14 +26,22 @@ if (!$SkipInstaller -and !$Iscc) {
     if (!$Iscc) { throw 'Inno Setup 7 was not found. Pass -Iscc or use -SkipInstaller for portable packages.' }
 }
 New-Item -ItemType Directory -Force $publishRoot,$releaseRoot | Out-Null
+$releaseFiles = @()
 foreach ($rid in @('win-x64','win-x86','win-arm64')) {
     $target = Join-Path $publishRoot $rid
+    if (![IO.Path]::GetFullPath($target).StartsWith($publishRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected publish target' }
     if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
     & $DotNet publish $project -c Release -r $rid -p:PublishProfile=Standalone -o $target
     if ($LASTEXITCODE -ne 0) { throw "Publish failed: $rid" }
     if (!(Test-Path -LiteralPath (Join-Path $target 'Host2VMRelay.exe'))) { throw "Missing executable: $rid" }
     $unexpected = Get-ChildItem -LiteralPath $target -File | Where-Object { $_.Extension -in '.dll','.pdb','.json' }
     if ($unexpected) { throw "Loose dependency files found in $target." }
+    if (!$SkipInstaller) {
+        $installerTarget = Join-Path $publishRoot "installer/$rid"
+        New-Item -ItemType Directory -Force $installerTarget | Out-Null
+        & $DotNet publish $project -c Release -r $rid -p:PublishProfile=FrameworkDependent -o $installerTarget
+        if ($LASTEXITCODE -ne 0) { throw "Framework-dependent publish failed: $rid" }
+    }
 }
 $common = Join-Path $publishRoot 'common'
 if (Test-Path -LiteralPath $common) { Remove-Item -LiteralPath $common -Recurse -Force }
@@ -42,15 +50,21 @@ Copy-Item -LiteralPath (Join-Path $repoRoot 'licenses') -Destination $common -Re
 Copy-Item -LiteralPath (Join-Path $repoRoot 'docs') -Destination $common -Recurse -Force
 foreach ($doc in @('README.md','CHANGELOG.md')) { Copy-Item -LiteralPath (Join-Path $repoRoot $doc) -Destination $common -Force }
 foreach ($rid in @('win-x64','win-x86','win-arm64')) {
-    Compress-Archive -Path (Join-Path $publishRoot "$rid\Host2VMRelay.exe"), (Join-Path $common '*') -DestinationPath (Join-Path $releaseRoot "Host2VMRelay-$version-$rid-Portable.zip") -Force
+    $archive = Join-Path $releaseRoot "Host2VMRelay-$version-$rid-Portable.zip"
+    Compress-Archive -Path (Join-Path $publishRoot "$rid\Host2VMRelay.exe"), (Join-Path $common '*') -DestinationPath $archive -Force
+    $releaseFiles += $archive
 }
 if (!$SkipInstaller) {
-    & $Iscc "/DAppVersion=$version" "/DPayloadRoot=$publishRoot" "/DOutputRoot=$releaseRoot" (Join-Path $repoRoot 'packaging/Host2VMRelay.iss')
-    if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
-    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'scripts\test-installer-icon.ps1') -Executable (Join-Path $releaseRoot "Host2VMRelay-$version-win-universal-Setup.exe")
-    if ($LASTEXITCODE -ne 0) { throw 'Installer shell icon validation failed' }
+    foreach ($arch in @('x64','x86','arm64')) {
+        & $Iscc "/DAppVersion=$version" "/DAppArch=$arch" "/DPayloadRoot=$publishRoot" "/DOutputRoot=$releaseRoot" (Join-Path $repoRoot 'packaging/Host2VMRelay.iss')
+        if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed: $arch" }
+        $installer = Join-Path $releaseRoot "Host2VMRelay-$version-win-$arch-Setup.exe"
+        & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $repoRoot 'scripts\test-installer-icon.ps1') -Executable $installer
+        if ($LASTEXITCODE -ne 0) { throw "Installer shell icon validation failed: $arch" }
+        $releaseFiles += $installer
+    }
 }
-Get-ChildItem -LiteralPath $releaseRoot -File | Where-Object { $_.Name -like "Host2VMRelay-$version-*" -and $_.Extension -in '.exe','.zip' } | Get-FileHash -Algorithm SHA256 |
+Get-FileHash -LiteralPath $releaseFiles -Algorithm SHA256 |
     ForEach-Object { "$($_.Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($_.Path))" } |
     Set-Content -LiteralPath (Join-Path $releaseRoot 'SHA256SUMS.txt') -Encoding utf8
 Write-Host "Release artifacts: $releaseRoot"

@@ -22,6 +22,9 @@ internal static class LocalTransportChecks
         }
         try
         {
+            await ConcurrencyChecks.RunAsync(Check, token);
+            await HealthChecks.RunAsync();
+            Check(true, "health endpoint supports repeated probes and state changes on one connection");
             await TcpRelayChecks.RunAsync(Check, token);
             await SessionChecks.RunAsync(Check, token);
             using var resource = typeof(UdpTunnel).Assembly.GetManifestResourceStream("Host2VMRelay.UdpBridge")!;

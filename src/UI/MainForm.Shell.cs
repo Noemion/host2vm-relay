@@ -9,6 +9,7 @@ public sealed partial class MainForm
     private Label? pageTitle, pageDescription;
     private PictureBox? brandImage;
     private bool changingShell;
+    private bool shellLayoutReady;
     private static readonly string[] PageTitles = { "连接虚拟机", "转发规则", "Clash 接入", "运行日志", "设置" };
     private static readonly string[] PageDescriptions = { "通过 SSH，连接你信任的网络。", "只转发指定的域名、IP 与网段。", "一次接入，后续规则自动更新。", "连接、规则与诊断，一目了然。", "配置存储与显示偏好。" };
 
@@ -43,7 +44,7 @@ public sealed partial class MainForm
         var header = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, RowCount = 2, Margin = UiTheme.Spacing(0, 0, 0, 16) };
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.RowStyles.Add(new RowStyle(SizeType.AutoSize)); header.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        pageTitle = UiLayout.Heading(PageTitles[0], 22); pageTitle.Name = "pageTitle";
+        pageTitle = UiLayout.Heading(PageTitles[0], 18); pageTitle.Name = "pageTitle";
         pageDescription = UiLayout.Help(PageDescriptions[0]); pageDescription.Name = "pageDescription";
         state.Anchor = AnchorStyles.Top | AnchorStyles.Right; state.Margin = UiTheme.Spacing(12, 6, 0, 0);
         header.Controls.Add(pageTitle, 0, 0); header.Controls.Add(state, 1, 0);
@@ -68,11 +69,12 @@ public sealed partial class MainForm
     }
     private void UpdateShellLayout()
     {
-        if (changingShell || shellBody is null || sidebar is null || compactNavigation is null || navigation is null || contentArea is null) return;
+        if (!shellLayoutReady || changingShell || shellBody is null || sidebar is null || compactNavigation is null || navigation is null || contentArea is null) return;
         changingShell = true;
         try
         {
-            bool compact = ClientSize.Width * 96.0 / Math.Max(96, DeviceDpi) < UiTheme.Units(860);
+            // Large independent fonts need more room even when content scale is small.
+            bool compact = ClientSize.Width * 96.0 / Math.Max(96, DeviceDpi) < Math.Max(UiTheme.Units(860), 688 * UiTheme.FontPoints / 9.6F);
             var hostPanel = compact ? compactNavigation : (Control)sidebar;
             if (navigation.Parent != hostPanel)
             {

@@ -4,6 +4,8 @@ namespace Host2VMRelay;
 
 public sealed class Settings
 {
+    public const int MinUiScalePercent = 75, MaxUiScalePercent = 110;
+    public const decimal MinFontSizePoints = 8m, MaxFontSizePoints = 10.5m;
     public string Host { get; set; } = "192.168.229.10";
     public int Port { get; set; } = 22;
     public string User { get; set; } = "";
@@ -16,6 +18,11 @@ public sealed class Settings
     public bool EnableUdp { get; set; } = true;
     public string Rules { get; set; } = "# 每行填写一个域名、IP 或网段";
     public string TestUrl { get; set; } = "https://example.com/";
+    public int UiScalePercent { get; set; } = 100;
+    public decimal FontSizePoints { get; set; } = 9m;
+    public bool ShowConnectionNotifications { get; set; } = true;
+    public bool LogForwardingRequests { get; set; } = true;
+    public int ReconnectDelaySeconds { get; set; } = 15;
     public Dictionary<string, string> HostKeys { get; set; } = new();
 
     public static readonly string DefaultFolder = Path.Combine(
@@ -49,6 +56,8 @@ public sealed class Settings
     }
     private void Validate()
     {
+        if (UiScalePercent is < MinUiScalePercent or > MaxUiScalePercent || FontSizePoints is < MinFontSizePoints or > MaxFontSizePoints || ReconnectDelaySeconds is < 5 or > 120)
+            throw new IOException("界面缩放、字体大小或重连间隔超出支持范围，请修正 settings.json。");
         // Fail before binding controls or publishing a profile. Never silently reset
         // an invalid port or trust store, which could select a different endpoint.
         if (Port is < 1 or > 65535 || SocksPort is < 1024 or > 65535)

@@ -21,6 +21,8 @@ internal sealed class UiAcceptance
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll")]
+    private static extern bool PrintWindow(IntPtr window, IntPtr dc, uint flags);
+    [DllImport("user32.dll")]
     private static extern IntPtr GetWindowDpiAwarenessContext(IntPtr window);
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -178,14 +180,17 @@ internal sealed class UiAcceptance
         }
         Screenshot(form, name + "-scrolled.png");
         stages.Add(new { Stage = name, Method = native ? "native-monitor" : "injected-WM_DPICHANGED",
-            ScreenshotMethod = "desktop-CopyFromScreen", NativeDpi = GetDpiForWindow(form.Handle), ManagedDpi = form.DeviceDpi,
+            ScreenshotMethod = "window-PrintWindow", NativeDpi = GetDpiForWindow(form.Handle), ManagedDpi = form.DeviceDpi,
             Window = form.Bounds.ToString(), WorkArea = area.ToString(), Controls = measurements });
     }
     private static void Reveal(Control control)
     {
         var parents = new List<ScrollableControl>();
         for (Control? p = control.Parent; p is not null; p = p.Parent)
+        {
+            if (p is PageScrollPanel page) page.Reveal(control);
             if (p is ScrollableControl { AutoScroll: true } scroll) parents.Add(scroll);
+        }
         for (int pass = 0; pass < 2; pass++)
             foreach (var scroll in parents) scroll.ScrollControlIntoView(control);
         Application.DoEvents();
@@ -206,7 +211,10 @@ internal sealed class UiAcceptance
     private static void ResetScroll(Control root)
     {
         foreach (var c in All(root).OfType<ScrollableControl>())
+        {
+            if (c is PageScrollPanel page) page.ResetScroll();
             if (c.AutoScroll) c.AutoScrollPosition = Point.Empty;
+        }
     }
     public static void Settle(Control form)
     {
@@ -218,11 +226,15 @@ internal sealed class UiAcceptance
         form.Refresh(); Application.DoEvents(); Thread.Sleep(80);
         using var bitmap = new Bitmap(form.Width, form.Height);
         using (var graphics = Graphics.FromImage(bitmap))
-            graphics.CopyFromScreen(form.Location, Point.Empty, form.Size, CopyPixelOperation.SourceCopy);
+        {
+            var dc = graphics.GetHdc();
+            try { Check(PrintWindow(form.Handle, dc, 2), "window rendering capture succeeds"); }
+            finally { graphics.ReleaseHdc(dc); }
+        }
         var colors = new HashSet<int>();
         for (int y = 0; y < bitmap.Height; y += 13)
             for (int x = 0; x < bitmap.Width; x += 13) colors.Add(bitmap.GetPixel(x, y).ToArgb());
-        Check(colors.Count > 8, "desktop screenshot contains a rendered window, not a blank capture");
+        Check(colors.Count > 8, "window capture contains rendered content");
         bitmap.Save(Path.Combine(folder, name));
     }
     public void Finish(string output)

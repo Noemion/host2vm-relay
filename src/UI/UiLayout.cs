@@ -4,7 +4,7 @@ namespace Host2VMRelay;
 
 internal static class UiLayout
 {
-    public const float BaseFontPoints = 12F * UiTheme.ContentScale;
+    public static float BaseFontPoints => UiTheme.FontPoints;
     public static Font BodyFont() => new("Microsoft YaHei UI", BaseFontPoints, FontStyle.Regular, GraphicsUnit.Point);
     public static Font CodeFont() => new("Consolas", BaseFontPoints, FontStyle.Regular, GraphicsUnit.Point);
     private static readonly ConditionalWeakTable<Form, ExplicitFonts> fontTrackers = new();
@@ -23,7 +23,8 @@ internal static class UiLayout
         {
             foreach (Control child in parent.Controls)
             {
-                if (!child.Font.Equals(parent.Font)) specs.Add((child, child.Font.FontFamily.Name, child.Font.SizeInPoints / form.Font.SizeInPoints, child.Font.Style));
+                if (System.ComponentModel.TypeDescriptor.GetProperties(child)["Font"]?.ShouldSerializeValue(child) == true)
+                    specs.Add((child, child.Font.FontFamily.Name, child.Font.SizeInPoints / form.Font.SizeInPoints, child.Font.Style));
                 if (child is TextBox { Multiline: false } input) singleLineInputs.Add(input);
                 Capture(child);
             }
@@ -58,7 +59,7 @@ internal static class UiLayout
     public static Label Heading(string text, float points = 14)
     {
         var label = Help(text); label.ForeColor = UiTheme.Ink;
-        label.Font = new Font("Microsoft YaHei UI", points * UiTheme.ContentScale, FontStyle.Bold, GraphicsUnit.Point);
+        label.Font = new Font("Microsoft YaHei UI", points / 12F * BaseFontPoints, FontStyle.Bold, GraphicsUnit.Point);
         label.Margin = UiTheme.Spacing(0, 0, 0, 10); return label;
     }
     public static TableLayoutPanel Stack()

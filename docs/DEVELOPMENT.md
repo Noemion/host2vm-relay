@@ -44,6 +44,8 @@ Linux 网络验收必须运行在可销毁、有 root 权限的 CI 测试机：`
 
 ## 异常处理契约
 
+- 安装器的行为、布局分别位于 `packaging/InstallerFlow.iss` 和 `packaging/InstallerAppearance.iss`。仅在 `PrepareToInstall` 中处理旧版，禁止在窗口创建前卸载。进度按阶段及实际文件进度推进，使用 Windows 原生动画，禁止按时间伪造进度。日志从独立卸载日志共享读取，只处理完整行；界面最多保留 500 行。安装运行测试交由用户执行，默认构建不生成或运行测试安装器。验收记录见 `docs/INSTALLER_ACCEPTANCE.md`。
+
 - `DuplexRelay` 等待两个复制任务结束。正常 EOF 仅关闭目标写端，允许反向响应继续；异常或取消则关闭两个套接字并取消另一任务，之后才释放 SOCKS 准入槽位。
 - UDP association 的两分钟空闲时间由两个方向成功传输共同刷新。DNS 等待、无效包和队列拒绝不算成功传输。测试注入一秒空闲时间，用真实 socket 验证持续下行与真正空闲的区别。
 - Python DNS 使用四个 daemon worker、32 个排队请求、最多 32 个待解析目标、每目标八个数据报；逻辑超时两秒，成功结果缓存 60 秒，最多 128 项。系统 getaddrinfo 本身不可强制取消，超时/关闭后的结果不再投递；即使 worker 阻塞，也不阻塞数字 IP、已有会话和健康探测。UDP 过载允许丢包，不增长无界队列。

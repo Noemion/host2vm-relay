@@ -59,6 +59,13 @@ jobs:
       - name: Publish all architectures and offline installer
         shell: pwsh
         run: .\scripts\build-release.ps1 -Iscc $env:INNO_COMPILER
+      - name: Check framework-dependent x64 application
+        shell: pwsh
+        run: |
+          $result = Join-Path $PWD 'artifacts/checks/framework-dependent-self-test.txt'
+          $test = Start-Process '.\artifacts\publish\installer\win-x64\Host2VMRelay.exe' -ArgumentList "--self-test `"$result`"" -WindowStyle Hidden -PassThru -Wait
+          Get-Content $result
+          if ($test.ExitCode -ne 0) { throw 'Framework-dependent self-test failed' }
       - name: Upload installer icon evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

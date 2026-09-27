@@ -7,6 +7,13 @@ internal static class UpdateSelfTest
     public static void Run(string output, Action<bool, string> check)
     {
         const string user = "// user-owned comment\nconst marker = '保留 😀';\nfunction main(c) { c.userValue = marker; c.rules.unshift('DOMAIN,custom.example,DIRECT'); return c; }";
+        foreach (string invalid in new[] { "function main(config) {", "config.proxies = ;", "const value = 'unterminated;" })
+        {
+            bool rejected = false;
+            try { ClashScript.Generate(1080, "192.168.229.10", invalid); }
+            catch (FormatException) { rejected = true; }
+            check(rejected, "invalid JavaScript is rejected before copy or save: " + invalid);
+        }
         string first = ClashScript.Generate(1080, "192.168.229.10", user);
         var imported = ScriptComposer.Inspect(first);
         check(imported.Kind == "composed-v2" && imported.Original == user, "v2 extracts the full user section");
@@ -43,12 +50,31 @@ internal static class UpdateSelfTest
         check(ScriptComposer.ExtractOriginal(legacy040) == user, "published v0.4.0 managed template is recognized");
         var cases = new Dictionary<string, string>
         {
+            ["fragment"] = ClashScript.Generate(1080, "192.168.229.10", "// 保留原有设置\nfor (const proxy of config.proxies ?? []) { if (proxy.type === \"mieru\") proxy.udp = true; }\nconfig.fragmentRan = profileName;"),
             ["fresh"] = first, ["updated"] = updated,
             ["v040Updated"] = ClashScript.Generate(1081, "fd00::8", legacy040),
             ["v1Updated"] = ClashScript.Generate(1081, "fd00::8", legacy),
             ["v1UserEdited"] = ClashScript.Generate(1081, "fd00::8", legacyEdited),
             ["v2UserEdited"] = ClashScript.Generate(1081, "fd00::8", edited)
         };
+        var inputForms = new Dictionary<string, string>
+        {
+            ["declaration"] = "function main(config, profileName) { config.form = profileName; return config; }",
+            ["arrow"] = "const main = (config, profileName) => { config.form = profileName; return config; };",
+            ["expression"] = "var main = function(config, profileName) { config.form = profileName; };",
+            ["helpers"] = "function decorate(c, p) { c.form = p; } function main(c, p) { decorate(c, p); return c; }",
+            ["body"] = "config.form = profileName;",
+            ["bodyReturn"] = "config.form = profileName; return config;",
+            ["bodyEarlyReturn"] = "config.form = profileName; return;",
+            ["misleadingText"] = "// function main(config) {}\nconst text = 'main(config)'; config.form = profileName;",
+            ["bodyHelper"] = "function decorate(c) { c.form = profileName; } decorate(config);"
+        };
+        foreach (var (name, source) in inputForms)
+        {
+            string generated = ClashScript.Generate(1080, "192.168.229.10", source);
+            check(ScriptComposer.ExtractOriginal(generated) == source, "input form round-trip: " + name);
+            cases["form-" + name] = generated;
+        }
         File.WriteAllText(Path.Combine(Path.GetDirectoryName(output)!, "incremental-cases.json"),
             JsonSerializer.Serialize(cases, new JsonSerializerOptions { WriteIndented = true }));
         TestStorage(output, check);
@@ -92,7 +118,15 @@ internal static class UpdateSelfTest
             });
             check(Settings.Load().Rules == active.Rules && previous.Rules == "saved.example" && previous.HostKeys.Count == 0,
                 "successful save publishes a detached profile after persistence");
-            foreach (string invalid in new[] { "{\"Port\":0}", "{\"SocksPort\":65536}", "{\"HostKeys\":null}", "{\"Rules\":null}" })
+            var legacyDefaults = Settings.Deserialize("{}");
+            check(legacyDefaults.UiScalePercent == 100 && legacyDefaults.FontSizePoints == 9m && legacyDefaults.ReconnectDelaySeconds == 15,
+                "legacy settings receive safe appearance and reconnect defaults");
+            active = active.SaveUpdated(s => { s.UiScalePercent = 110; s.FontSizePoints = 10.5m; s.ReconnectDelaySeconds = 30; s.LogForwardingRequests = false; });
+            var appearance = Settings.Load();
+            check(appearance.UiScalePercent == 110 && appearance.FontSizePoints == 10.5m && appearance.ReconnectDelaySeconds == 30 && !appearance.LogForwardingRequests,
+                "appearance and behavior preferences survive save and reload");
+            foreach (string invalid in new[] { "{\"Port\":0}", "{\"SocksPort\":65536}", "{\"HostKeys\":null}", "{\"Rules\":null}",
+                "{\"UiScalePercent\":0}", "{\"UiScalePercent\":111}", "{\"FontSizePoints\":10.6}", "{\"FontSizePoints\":99}", "{\"ReconnectDelaySeconds\":0}" })
             {
                 File.WriteAllText(path, invalid);
                 bool rejected = false;

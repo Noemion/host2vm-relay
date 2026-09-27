@@ -32,7 +32,8 @@ assert.equal(result.label, '中文 😀 __SOCKS_PORT__:kept'); assert.equal(resu
 assert(result.rules.includes('DOMAIN,user.example,DIRECT'));
 assert(execute(scripts.arrow, base()).arrow); assert(execute(scripts.mutating, base()).mutated);
 assert(execute(scripts.early, base()).early); assert(execute(scripts.comment, base()).comment);
-for (const key of ['throws','missing','async','null','array']) assert.throws(() => execute(scripts[key], base()), undefined, key + ' should fail loudly');
+for (const key of ['throws','async','null','array']) assert.throws(() => execute(scripts[key], base()), undefined, key + ' should fail loudly');
+assert.equal(execute(scripts.missing, base()).proxies.length, 2, 'A fragment without main keeps config and receives managed rules');
 result = execute(scripts.regenerated, base());
 assert.equal(result.proxies.find(p => p.name === 'Host2VMRelay').port, 1081);
 assert(result.rules.includes('IP-CIDR6,fd00::8/128,DIRECT,no-resolve'));

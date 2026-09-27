@@ -4,7 +4,7 @@
 
 ## 安装与准备
 
-从 [Releases](https://github.com/Noemion/host2vm-relay/releases/latest) 下载带 `win-universal` 的通用安装包，或对应的 x64／x86／ARM64 便携包。Windows 端不需另装 .NET、Python、Node.js 或编译器。
+安装包按 x64、x86 和 ARM64 分别提供。安装版需要对应架构的 [.NET 8 桌面运行时](https://dotnet.microsoft.com/download/dotnet/8.0)，安装器会在卸载旧版前检查依赖。便携包仍包含运行时，无需另装 .NET。Windows 客户端均不需要 Python、Node.js 或编译器。正式版本见 [Releases](https://github.com/Noemion/host2vm-relay/releases/latest)。
 
 Windows 使用 Clash Verge Rev／Mihomo TUN。虚拟机需要 Linux／兼容 POSIX shell 的 SSH 服务、允许命令执行和 TCP 转发，并能够访问目标网络。UDP 功能还需要虚拟机 `python3`；程序会复用已校验的 SSH 会话启动内存中的标准库组件，不安装服务、不使用 root、不额外开放 VM 监听端口。
 

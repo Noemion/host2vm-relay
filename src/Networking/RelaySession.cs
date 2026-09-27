@@ -29,6 +29,33 @@ internal sealed class RelaySession : IDisposable
     private Task? udpStart;
     private long nextUdpRetry;
     private bool disposed;
+    private readonly TaskCompletionSource disposalCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task DisposalCompleted => disposalCompleted.Task;
+    private int monitoring;
+    private volatile bool retryUdpAutomatically;
+    public void StartMonitoring(bool retryUdp)
+    {
+        retryUdpAutomatically = retryUdp;
+        if (Interlocked.Exchange(ref monitoring, 1) == 0) _ = Task.Run(MonitorAsync);
+    }
+    public void SetAutomaticRecovery(bool enabled) => retryUdpAutomatically = enabled;
+    private async Task MonitorAsync()
+    {
+        try
+        {
+            while (!lifetime.IsCancellationRequested)
+            {
+                await Task.Delay(3000, lifetime.Token).ConfigureAwait(false);
+                if (!await RefreshAsync(retryUdpAutomatically).ConfigureAwait(false)) return;
+            }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            log("WARNING 后台隧道检查失败：" + ex.Message);
+            Dispose();
+        }
+    }
 
     public RelayHealth Health => new(relay.TcpHealthy, relay.UdpHealthy);
     public bool IsConnected { get { lock (gate) return !disposed && client.IsConnected && forward.IsStarted; } }
@@ -45,7 +72,7 @@ internal sealed class RelaySession : IDisposable
     }
 
     public static async Task<RelaySession> OpenAsync(RelayConnectionOptions options,
-        Func<string, bool> trustHost, Action<string> log, CancellationToken token = default)
+        Func<string, bool> trustHost, Action<string> log, CancellationToken token = default, Action<string>? trafficLog = null)
     {
         // Startup resources remain local until completely initialized; a cancelled open
         // cannot publish a half-created session into a newer UI connection attempt.
@@ -78,7 +105,7 @@ internal sealed class RelaySession : IDisposable
                 forward.Exception += (_, e) => log("TCP：" + e.Exception.Message);
                 client.AddForwardedPort(forward);
                 forward.Start();
-                relay = new RelaySocksServer(options.SocksPort);
+                relay = new RelaySocksServer(options.SocksPort, log: trafficLog ?? log);
                 relay.SetUpstream((int)forward.BoundPort, null);
                 token.ThrowIfCancellationRequested();
                 return new RelaySession(client, forward, key, relay, options.EnableUdp, log);
@@ -194,7 +221,11 @@ internal sealed class RelaySession : IDisposable
         // Cancellation/SSH disposal may wait for callbacks. Never hold gate while
         // doing either: a completing start/refresh needs it to discard stale results.
         try { lifetime.Cancel(); }
-        finally { Release(log, relay, previous, forward, client, key); }
+        finally
+        {
+            try { Release(log, relay, previous, forward, client, key); }
+            finally { disposalCompleted.TrySetResult(); }
+        }
         // Outstanding refresh/start tasks still observe the synchronization objects.
     }
 

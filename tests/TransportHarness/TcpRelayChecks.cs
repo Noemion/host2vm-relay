@@ -8,7 +8,8 @@ internal static class TcpRelayChecks
     {
         using var upstream = new TcpListener(IPAddress.Loopback, 0);
         upstream.Start();
-        using var relay = new RelaySocksServer(0);
+        var events = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        using var relay = new RelaySocksServer(0, log: events.Enqueue);
         int port = ((IPEndPoint)upstream.LocalEndpoint).Port;
 
         async Task<TcpClient> Connect(TcpClient caller)
@@ -34,6 +35,7 @@ internal static class TcpRelayChecks
             for (int i = 0; i < 100 && relay.ActiveConnections != 0; i++)
                 await Task.Delay(10, token);
             check(relay.ActiveConnections == 0, scenario);
+            check(events.Any(line => line.Contains("127.0.0.1:80")), "TCP forwarding log identifies destination");
         }
 
         // The response is sent only after EOF, so closing both sides on normal
@@ -55,6 +57,10 @@ internal static class TcpRelayChecks
             check(response.ToArray().AsSpan().SequenceEqual("late response"u8), "TCP half-close preserves the delayed reverse response");
         }
         await Drained("TCP half-close completion releases its admission slot");
+        check(events.Any(line => line.Contains("客户端→虚拟机") && line.Contains("已转发 7 字节") && line.Contains("EOF")),
+            "connection diagnostics identify client EOF and exact forwarded byte count");
+        check(events.Any(line => line.Contains("虚拟机→客户端") && line.Contains("已转发 13 字节") && line.Contains("EOF")),
+            "connection diagnostics identify upstream EOF without logging payloads");
 
         foreach (bool resetUpstream in new[] { true, false })
         {
