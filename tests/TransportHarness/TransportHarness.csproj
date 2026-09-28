@@ -11,6 +11,7 @@
     <Compile Include="../../src/Networking/BackgroundCleanup.cs" Link="BackgroundCleanup.cs" />
     <Compile Include="../../src/Diagnostics/PendingLogBuffer.cs" Link="PendingLogBuffer.cs" />
     <Compile Include="../../src/Networking/RelayCoreProcess.cs" Link="RelayCoreProcess.cs" />
+    <Compile Include="../../src/Networking/VmExecutionGuide.cs" Link="VmExecutionGuide.cs" />
     <Compile Include="../../src/Networking/RelaySession.cs" Link="RelaySession.cs" />
     <Compile Include="../../src/Networking/RelayHealthTiming.cs" Link="RelayHealthTiming.cs" />
     <Compile Include="../../src/Networking/ByteBudget.cs" Link="ByteBudget.cs" />
