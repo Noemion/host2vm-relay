@@ -685,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "h2vm-agent"
-version = "0.6.12"
+version = "0.6.13"
 dependencies = [
  "anyhow",
  "tokio",
@@ -693,7 +693,7 @@ dependencies = [
 
 [[package]]
 name = "h2vm-core"
-version = "0.6.12"
+version = "0.6.13"
 dependencies = [
  "anyhow",
  "russh",

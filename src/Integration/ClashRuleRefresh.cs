@@ -1,5 +1,3 @@
-using System.IO.Pipes;
-
 namespace Host2VMRelay;
 
 /// <summary>Requests provider refresh; service-managed copies may still need client configuration application.</summary>
@@ -40,22 +38,7 @@ internal static class ClashRuleRefresh
     }
     private static async Task RefreshAsync()
     {
-        // Clash Verge uses a named-pipe API on Windows. Never open a new TCP
-        // controller or modify the user's API authentication settings.
-        var pipes = Directory.GetFiles(@"\\.\pipe\")
-            .Where(p => Path.GetFileName(p).StartsWith("verge-mihomo-production-", StringComparison.Ordinal)).ToArray();
-        if (pipes.Length != 1) throw new IOException("无法唯一确定运行中的 Clash Verge 控制接口");
-        string pipeName = Path.GetFileName(pipes[0]);
-        using var handler = new SocketsHttpHandler
-        {
-            ConnectCallback = async (_, token) =>
-            {
-                var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-                try { await pipe.ConnectAsync(token); return pipe; }
-                catch { pipe.Dispose(); throw; }
-            }
-        };
-        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(3) };
+        using var client = ClashControlClient.Open();
         foreach (string name in new[] { "host2vm-relay-rules", "host2vm-relay-udp-rules" })
         {
             using var response = await client.PutAsync("http://localhost/providers/rules/" + name, null);

@@ -5,7 +5,7 @@
   #define OutputRoot "..\artifacts\release"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.6.12"
+  #define AppVersion "0.6.13"
 #endif
 #ifndef AppArch
   #define AppArch "x64"

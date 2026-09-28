@@ -188,7 +188,39 @@ public sealed partial class MainForm
             catch (Exception ex) { testResult.Text = "测试未完成，请检查连接与运行日志。"; Error(ex); }
             finally { if (!test.IsDisposed) test.Enabled = true; }
         };
-        UiLayout.Add(page, UiLayout.Card("03  验证连接", "浏览目标网页，并在 Clash 连接列表确认命中 Host2VMRelay。", UiLayout.Field("测试网址", testUrl), UiLayout.Actions(test), testResult));
+        var diagnose = UiLayout.Primary("检测路由是否生效", 210);
+        diagnose.Name = "diagnoseRoute";
+        var cancelDiagnostic = UiLayout.Button("取消检测", 110); cancelDiagnostic.Enabled = false;
+        var diagnosticResult = UiLayout.Help("尚未检测。输入目标网址后，可核对规则、实际 TCP 链路和 TLS 证书。");
+        diagnosticResult.Name = "routeDiagnosticResult";
+        CancellationTokenSource? diagnosticCancellation = null;
+        cancelDiagnostic.Click += (_, _) => diagnosticCancellation?.Cancel();
+        diagnose.Click += async (_, _) =>
+        {
+            diagnose.Enabled = false; cancelDiagnostic.Enabled = true;
+            var evidence = new List<string>();
+            using var operation = CancellationTokenSource.CreateLinkedTokenSource(formLifetime.Token);
+            diagnosticCancellation = operation;
+            try
+            {
+                var target = RouteDiagnostics.ParseTarget(testUrl.Text);
+                diagnosticResult.Text = "正在检测…";
+                await RouteDiagnostics.RunAsync(target, settings.Rules, session?.Health.Tcp == true, line =>
+                {
+                    if (IsDisposed || diagnosticResult.IsDisposed) return;
+                    evidence.Add(line); diagnosticResult.Text = string.Join(Environment.NewLine, evidence);
+                    Log("路由诊断：" + line);
+                }, operation.Token);
+            }
+            catch (Exception ex) { if (!diagnosticResult.IsDisposed) diagnosticResult.Text = "检测未完成：" + ex.Message; }
+            finally
+            {
+                diagnosticCancellation = null;
+                if (!diagnose.IsDisposed) { diagnose.Enabled = true; cancelDiagnostic.Enabled = false; }
+            }
+        };
+        UiLayout.Add(page, UiLayout.Card("03  验证连接", "路由检测通过 Clash 发起一次无登录信息的 TCP 请求，并读取对应连接记录。SOCKS5 测试仅验证虚拟机通道。",
+            UiLayout.Field("测试网址", testUrl), UiLayout.Actions(diagnose, cancelDiagnostic), diagnosticResult, UiLayout.Actions(test), testResult));
         UiLayout.Add(page, UiLayout.Help("UDP 保持原域名、IP 和端口；支持 Linux x64 / ARM64，连接时自动准备转发组件。单播数据报经 SSH 封装，不支持广播/组播；Chrome 自定义安全 DNS 可能绕过分流。"));
     }
     private string GenerateScript(string? existing)

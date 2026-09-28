@@ -86,6 +86,7 @@ internal static class SelfTest
             try { ClashScript.Generate(1080, existingScript: new string('x', ScriptComposer.MaxSourceLength + 1)); } catch (ArgumentException) { tooLarge = true; }
             Check(tooLarge, "reject oversized source");
             UpdateSelfTest.Run(output, Check);
+            RouteDiagnosticChecks.Run(Check);
             ReleaseUpdateChecks.RunAsync(output, Check).GetAwaiter().GetResult();
             ExportScriptCases(Path.Combine(Path.GetDirectoryName(output)!, "script-cases.json"));
             lines.Add("PASS actual C# generated scripts exported for JavaScript execution checks");
