@@ -5,7 +5,7 @@
   #define OutputRoot "..\artifacts\release"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.6.9"
+  #define AppVersion "0.6.10"
 #endif
 #ifndef AppArch
   #define AppArch "x64"
@@ -45,11 +45,16 @@ RestartApplications=no
 AppMutex=Local\Host2VMRelay.Desktop
 SetupLogging=yes
 WizardStyle=modern
+; Re-detect the current Windows display language on every install or upgrade.
+LanguageDetectionMethod=uilanguage
+UsePreviousLanguage=no
+ShowLanguageDialog=no
 VersionInfoDescription=Host2VMRelay {#AppArch} installer
 
 [Languages]
-Name: "zhcn"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+; Inno uses the first entry when no supported display language matches.
 Name: "en"; MessagesFile: "compiler:Default.isl"
+Name: "zhcn"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
