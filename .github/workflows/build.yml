@@ -9,19 +9,101 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      build: ${{ steps.scope.outputs.build }}
+      ui: ${{ steps.scope.outputs.ui }}
+      network: ${{ steps.scope.outputs.network }}
+      native_checks: ${{ steps.scope.outputs.native_checks }}
+      packaging: ${{ steps.scope.outputs.packaging }}
+      publish: ${{ steps.scope.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Validate change selection
+        run: python3 tests/test-ci-plan.py
+      - name: Select checks and packaging
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci-plan.py
+  windows-native:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            target: x86_64-pc-windows-msvc
+          - arch: x86
+            target: i686-pc-windows-msvc
+          - arch: arm64
+            target: aarch64-pc-windows-msvc
+    env:
+      RUSTFLAGS: '-C target-feature=+crt-static'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare Rust target
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: native -> ../artifacts/native-target
+          key: windows-${{ matrix.arch }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Build Windows worker
+        shell: pwsh
+        run: ./scripts/build-native.ps1 -Architectures ${{ matrix.arch }} -WorkersOnly
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Host2VMRelay-worker-${{ matrix.arch }}
+          path: artifacts/native/
+          if-no-files-found: error
   native:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/artifacts/native-target
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Build and check static Rust VM agents and SSH worker
+      - name: Prepare Rust targets
         run: |
           rustup toolchain install 1.98.1 --profile minimal --component rustfmt,clippy
           rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: native -> ../artifacts/native-target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Check Rust source and unit tests
+        if: needs.plan.outputs.native_checks == 'true'
+        run: |
           cargo fmt --manifest-path native/Cargo.toml --all -- --check
           cargo clippy --manifest-path native/Cargo.toml --locked --all-targets -- -D warnings
           cargo test --manifest-path native/Cargo.toml --locked
-          bash scripts/build-native-linux.sh --with-core
+      - name: Build static VM agents and optional integration worker
+        env:
+          WITH_CORE: ${{ needs.plan.outputs.network }}
+        run: |
+          if [ "$WITH_CORE" = true ]; then
+            bash scripts/build-native-linux.sh --with-core
+          else
+            bash scripts/build-native-linux.sh
+          fi
+      - name: Check Rust SSH engine and both VM architectures
+        if: needs.plan.outputs.native_checks == 'true'
+        run: |
           sudo apt-get update -qq
           sudo apt-get install -y openssh-server qemu-user
           sudo python3 tests/test-rust-engine.py
@@ -37,7 +119,8 @@ jobs:
           name: Host2VMRelay-rust-checks
           path: artifacts/checks/rust/
   windows:
-    needs: native
+    needs: [plan, native, windows-native]
+    if: needs.plan.outputs.build == 'true'
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
@@ -52,6 +135,8 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '8.0.x'
+          cache: true
+          cache-dependency-path: src/packages.lock.json
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
@@ -60,19 +145,27 @@ jobs:
         with:
           name: Host2VMRelay-native
           path: artifacts/native
-      - name: Build Windows Rust workers
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: Host2VMRelay-worker-*
+          merge-multiple: true
+          path: artifacts/native
+      - name: Assemble verified native bundles
         shell: pwsh
+        run: ./scripts/build-native.ps1 -BundleOnly
+      - name: Build and check application
+        shell: pwsh
+        env:
+          CHECK_UI: ${{ needs.plan.outputs.ui }}
         run: |
-          rustup toolchain install 1.98.1 --profile minimal
-          rustup target add x86_64-pc-windows-msvc i686-pc-windows-msvc aarch64-pc-windows-msvc
-          .\scripts\build-native.ps1
-      - name: Build and check scripts, icons and scaled layouts
-        shell: pwsh
-        run: .\build.ps1 -Test
+          ./build.ps1
+          ./scripts/test.ps1 -Smoke:($env:CHECK_UI -eq 'true')
       - name: Check native Windows transport and session lifecycle
+        if: needs.plan.outputs.network == 'true'
         shell: pwsh
         run: dotnet run --project tests/TransportHarness/TransportHarness.csproj -c Release -- --local-check artifacts/checks/windows-transport.json
       - name: Check Windows Rust UDP helper protocol
+        if: needs.plan.outputs.network == 'true'
         shell: pwsh
         run: |
           python tests/test-native-agent.py artifacts/native/tests/h2vm-agent.exe
@@ -84,6 +177,7 @@ jobs:
           name: Host2VMRelay-checks
           path: artifacts/checks/
       - name: Install packaging compiler
+        if: needs.plan.outputs.packaging == 'true'
         shell: pwsh
         run: |
           $setup = Join-Path $env:RUNNER_TEMP 'inno-setup.exe'
@@ -95,9 +189,11 @@ jobs:
           if ($install.ExitCode -ne 0) { throw 'Compiler installation failed' }
           "INNO_COMPILER=$compilerDir\ISCC.exe" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
       - name: Publish all architectures and offline installer
+        if: needs.plan.outputs.packaging == 'true'
         shell: pwsh
         run: .\scripts\build-release.ps1 -Iscc $env:INNO_COMPILER
       - name: Check framework-dependent x64 application
+        if: needs.plan.outputs.packaging == 'true'
         shell: pwsh
         run: |
           $result = Join-Path $PWD 'artifacts/checks/framework-dependent-self-test.txt'
@@ -105,13 +201,14 @@ jobs:
           Get-Content $result
           if ($test.ExitCode -ne 0) { throw 'Framework-dependent self-test failed' }
       - name: Upload installer icon evidence
-        if: always()
+        if: always() && needs.plan.outputs.packaging == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Host2VMRelay-installer-icons
           path: artifacts/checks/installer-icon/
           if-no-files-found: ignore
       - name: Check packaged x64 and x86 applications
+        if: needs.plan.outputs.packaging == 'true'
         shell: pwsh
         run: |
           foreach ($rid in @('win-x64','win-x86')) {
@@ -123,12 +220,14 @@ jobs:
             if ($test.ExitCode -ne 0) { throw "Packaged self-test failed: $rid" }
           }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: needs.plan.outputs.packaging == 'true'
         with:
           name: Host2VMRelay-Windows
           path: artifacts/release/
           if-no-files-found: error
   network:
-    needs: native
+    needs: [plan, native]
+    if: needs.plan.outputs.network == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -136,6 +235,8 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '8.0.x'
+          cache: true
+          cache-dependency-path: src/packages.lock.json
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: Host2VMRelay-native
@@ -160,8 +261,11 @@ jobs:
           path: artifacts/checks/network/
           if-no-files-found: ignore
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [windows, network]
+    if: >-
+      always() && needs.plan.outputs.publish == 'true' &&
+      needs.windows.result == 'success' &&
+      (needs.network.result == 'success' || needs.network.result == 'skipped')
+    needs: [plan, windows, network]
     runs-on: windows-latest
     permissions:
       contents: write
