@@ -25,7 +25,7 @@ public sealed partial class MainForm
         using (var icon = AppIcon.Load(128)) brandImage.Image = icon.ToBitmap();
         UiLayout.Add(brand, brandImage); brandImage.Dock = DockStyle.None;
         UiLayout.Add(brand, UiLayout.Heading("Host2VMRelay", 12)); UiLayout.Add(brand, UiLayout.Help("选择性网络中继")); sidebar.Controls.Add(brand, 0, 0);
-        navigation = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        navigation = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
             FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = Padding.Empty, BackColor = UiTheme.Sidebar };
         string[] labels = { "连接", "转发规则", "Clash 接入", "运行日志", "设置" };
         for (int i = 0; i < labels.Length; i++)
@@ -67,6 +67,7 @@ public sealed partial class MainForm
         if (index < 0 || pageTitle is null || pageDescription is null) return;
         pageTitle.Text = PageTitles[index]; pageDescription.Text = PageDescriptions[index];
         foreach (var button in navigationButtons) button.Selected = button.PageIndex == index;
+        if (navigationButtons[index].Parent == navigation) navigation!.ScrollControlIntoView(navigationButtons[index]);
     }
     private void UpdateShellLayout()
     {
