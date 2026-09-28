@@ -3,7 +3,7 @@ members = ["relay-core", "vm-agent"]
 resolver = "2"
 
 [workspace.package]
-version = "0.6.8"
+version = "0.6.9"
 edition = "2024"
 rust-version = "1.98"
 

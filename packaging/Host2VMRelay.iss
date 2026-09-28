@@ -5,7 +5,7 @@
   #define OutputRoot "..\artifacts\release"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.6.6"
+  #define AppVersion "0.6.9"
 #endif
 #ifndef AppArch
   #define AppArch "x64"
@@ -44,6 +44,7 @@ CloseApplications=yes
 RestartApplications=no
 AppMutex=Local\Host2VMRelay.Desktop
 SetupLogging=yes
+WizardStyle=modern
 VersionInfoDescription=Host2VMRelay {#AppArch} installer
 
 [Languages]
@@ -68,4 +69,3 @@ Filename: "{app}\Host2VMRelay.exe"; Description: "{cm:LaunchProgram,Host2VMRelay
 #define UninstallRegistryKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{B49F96CE-C602-4C52-A415-61A77A0B4BE7}_is1"
 #include "RuntimeRequirement.iss"
 #include "InstallerFlow.iss"
-#include "InstallerAppearance.iss"
