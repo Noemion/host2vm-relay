@@ -31,8 +31,11 @@ public sealed partial class MainForm : Form
     private string existingClashScript = "";
     private readonly PageHost pages = new();
 
-    public MainForm()
+    private bool suppressInitialShow;
+
+    public MainForm(bool startHidden = false)
     {
+        suppressInitialShow = startHidden;
         settings = Settings.Load();
         SuspendLayout(); DoubleBuffered = true;
         Text = "Host2VMRelay"; Font = UiLayout.BodyFont(); ForeColor = UiTheme.Ink;
@@ -115,6 +118,19 @@ public sealed partial class MainForm : Form
         };
         ResumeLayout(true); timer.Start(); logTimer.Start();
     }
+    protected override void SetVisibleCore(bool value)
+    {
+        if (value && suppressInitialShow)
+        {
+            suppressInitialShow = false;
+            // Keep the message loop and tray alive without showing then hiding
+            // a window. OnLoad runs normally when the user opens it from the tray.
+            if (!IsHandleCreated) CreateHandle();
+            value = false;
+        }
+        base.SetVisibleCore(value);
+    }
+
     protected override void OnLoad(EventArgs e)
     {
         // Framework startup scaling must finish before assigning physical-pixel

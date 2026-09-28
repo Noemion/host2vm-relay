@@ -22,6 +22,7 @@ public sealed class Settings
     public decimal FontSizePoints { get; set; } = 9m;
     public bool ShowConnectionNotifications { get; set; } = true;
     public bool LogForwardingRequests { get; set; } = true;
+    public bool SilentStart { get; set; }
     public int ReconnectDelaySeconds { get; set; } = 15;
     public const int MinConcurrentConnections = 64, MaxConcurrentConnections = 2048;
     public int ConcurrentConnectionLimit { get; set; } = 512;

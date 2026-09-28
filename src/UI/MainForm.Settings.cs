@@ -33,6 +33,43 @@ public sealed partial class MainForm
         reset.Click += (_, _) => { if (CanMoveProfile()) MoveProfile(Settings.DefaultFolder); };
         UiLayout.Add(page, UiLayout.Card("配置存储", "连接信息、加密凭据、规则和主机指纹保存在 settings.json。",
             UiLayout.Field("当前配置目录", current), UiLayout.Actions(open, choose, reset), notice));
+        var startup = new StartupRegistration();
+        string executable = Environment.ProcessPath ?? throw new IOException("无法确定当前程序路径。");
+        var autoStart = new CheckBox { Name = "startWithWindows", Text = "开机自启动（登录 Windows 后运行）", AutoSize = true };
+        var silentStart = new CheckBox { Name = "silentStart", Text = "静默启动（仅显示托盘图标）", AutoSize = true, Checked = settings.SilentStart };
+        var startupStatus = UiLayout.Help("两个选项独立生效，默认关闭。静默启动后可双击托盘图标打开窗口；不会自动连接虚拟机。");
+        bool changingStartup = false;
+        try { autoStart.Checked = startup.IsEnabled(executable); }
+        catch (Exception ex) { autoStart.Enabled = false; startupStatus.Text = "无法读取启动项：" + ex.Message; }
+        autoStart.CheckedChanged += (_, _) =>
+        {
+            if (changingStartup) return;
+            try
+            {
+                startup.SetEnabled(autoStart.Checked, executable);
+                startupStatus.Text = autoStart.Checked ? "已启用登录启动。Windows 的“启动应用”设置仍可禁用此启动项。" : "已关闭开机自启动。";
+            }
+            catch (Exception ex)
+            {
+                changingStartup = true; autoStart.Checked = !autoStart.Checked; changingStartup = false;
+                startupStatus.Text = "启动项保存失败：" + ex.Message;
+            }
+        };
+        silentStart.CheckedChanged += (_, _) =>
+        {
+            if (changingStartup) return;
+            try
+            {
+                settings = settings.SaveUpdated(s => s.SilentStart = silentStart.Checked);
+                startupStatus.Text = silentStart.Checked ? "已保存。下次启动仅显示托盘图标，当前窗口保持打开。" : "已保存。下次启动显示主窗口。";
+            }
+            catch (Exception ex)
+            {
+                changingStartup = true; silentStart.Checked = settings.SilentStart; changingStartup = false;
+                startupStatus.Text = "静默启动设置保存失败：" + ex.Message;
+            }
+        };
+        UiLayout.Add(page, UiLayout.Card("启动方式", "选项修改后立即保存。开机自启动只影响当前 Windows 用户，无需管理员权限。", autoStart, silentStart, startupStatus));
         var scale = new NumericUpDown { Name = "uiScalePercent", Minimum = Settings.MinUiScalePercent, Maximum = Settings.MaxUiScalePercent, Increment = 5, Value = settings.UiScalePercent };
         var font = new NumericUpDown { Name = "fontSizePoints", Minimum = Settings.MinFontSizePoints, Maximum = Settings.MaxFontSizePoints, Increment = .5m, DecimalPlaces = 1, Value = settings.FontSizePoints };
         var preview = UiLayout.Help("预览：连接已就绪 · Host2VMRelay 123456");

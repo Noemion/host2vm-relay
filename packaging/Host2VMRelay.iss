@@ -5,7 +5,7 @@
   #define OutputRoot "..\artifacts\release"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.6.13"
+  #define AppVersion "0.6.14"
 #endif
 #ifndef AppArch
   #define AppArch "x64"
@@ -80,6 +80,7 @@ Name: "{autodesktop}\Host2VMRelay"; Filename: "{app}\Host2VMRelay.exe"; Tasks: d
 Filename: "{app}\Host2VMRelay.exe"; Description: "{cm:LaunchProgram,Host2VMRelay}"; Flags: nowait postinstall skipifsilent
 
 #define UninstallRegistryKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{B49F96CE-C602-4C52-A415-61A77A0B4BE7}_is1"
+#define StartupRegistryKey "Software\Microsoft\Windows\CurrentVersion\Run"
 #include "RuntimeRequirement.iss"
 #include "InstallerSummary.iss"
 #include "InstallerFlow.iss"

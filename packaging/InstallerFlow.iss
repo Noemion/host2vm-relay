@@ -14,6 +14,7 @@ var
   InstallationProgressBase: Integer;
   InstallProgress: TNewProgressBar;
   ReportedProgress: Integer;
+  RestoreStartupAfterInstall: Boolean;
 
 procedure RefreshProgressHeader;
 begin
@@ -224,6 +225,10 @@ begin
   end
   else if CurStep = ssPostInstall then
   begin
+    if RestoreStartupAfterInstall then
+      if not RegWriteStringValue(HKCU, '{#StartupRegistryKey}', 'Host2VMRelay',
+        '"' + ExpandConstant('{app}\Host2VMRelay.exe') + '" --startup') then
+        RecordAction(CustomMessage('StartupRestoreFailed'));
     SetPhase(CustomMessage('ActionComplete'));
     ReportProgress(1000);
     RecordAction(CustomMessage('ActionComplete'));
@@ -289,7 +294,7 @@ end;
 
 procedure RemovePreviousVersion;
 var
-  Command, Failure: String;
+  Command, Failure, StartupCommand: String;
   ResultCode: Integer;
   Started: Boolean;
 begin
@@ -300,6 +305,11 @@ begin
     RaiseException(CustomMessage('ApplicationStillRunning'));
   if PreviousUninstaller <> '' then
   begin
+    // Capture before the old uninstaller removes its own Run entry. Only
+    // preserve an entry belonging to that installation, not a portable copy.
+    if RegQueryStringValue(HKCU, '{#StartupRegistryKey}', 'Host2VMRelay', StartupCommand) then
+      RestoreStartupAfterInstall := CompareText(StartupCommand,
+        '"' + AddBackslash(ExtractFileDir(PreviousUninstaller)) + 'Host2VMRelay.exe" --startup') = 0;
     SetPhase(FmtMessage(CustomMessage('PreparingOperation'), [CustomMessage(InstallationOperation)]));
     ReportProgress(50);
     RecordAction(PhaseText);
@@ -353,6 +363,16 @@ begin
     end;
 end;
 
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  StartupCommand: String;
+begin
+  if CurUninstallStep = usPostUninstall then
+    if RegQueryStringValue(HKCU, '{#StartupRegistryKey}', 'Host2VMRelay', StartupCommand) then
+      if CompareText(StartupCommand, '"' + ExpandConstant('{app}\Host2VMRelay.exe') + '" --startup') = 0 then
+        RegDeleteValue(HKCU, '{#StartupRegistryKey}', 'Host2VMRelay');
+end;
+
 // User configuration and its location pointer are intentionally retained.
 
 [CustomMessages]
@@ -391,3 +411,5 @@ zhcn.ApplicationStillRunning=Host2VMRelay 仍在运行，尚未移除旧版本�
 en.ApplicationStillRunning=Host2VMRelay is still running. The previous version has not been removed. Run Setup again and allow the wizard to close the application automatically.
 zhcn.UninstallApplicationRunning=Host2VMRelay 仍在运行。请退出应用后点击“重试”，或取消卸载。
 en.UninstallApplicationRunning=Host2VMRelay is still running. Exit the application and click Retry, or cancel uninstall.
+zhcn.StartupRestoreFailed=开机自启动恢复失败。安装完成后，请在设置中重新启用。
+en.StartupRestoreFailed=Could not restore startup registration. Enable it again in Settings after installation.

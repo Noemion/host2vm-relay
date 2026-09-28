@@ -12,7 +12,7 @@ internal static class Program
         bool startupCheck = args.Contains("--startup-check");
         bool smoke = args.Contains("--smoke") || startupCheck;
         using var mutex = new Mutex(true, smoke ? "Local\\Host2VMRelay.Smoke" : "Local\\Host2VMRelay.Desktop", out bool first);
-        if (!first) { if (smoke) Environment.ExitCode = 1; else MessageBox.Show("应用已在运行，请从系统托盘打开。", "Host2VMRelay"); return; }
+        if (!first) { if (smoke) Environment.ExitCode = 1; else if (!args.Contains("--startup")) MessageBox.Show("应用已在运行，请从系统托盘打开。", "Host2VMRelay"); return; }
         string? smokeOutput = smoke ? Path.GetFullPath(args.Last()) : null;
         try
         {
@@ -67,7 +67,7 @@ internal static class Program
         while (true)
         {
             PreparedInstaller? installer;
-            using (var form = new MainForm())
+            using (var form = new MainForm(startHidden: launchError is null && Settings.Load().SilentStart))
             {
                 if (launchError is not null) form.Shown += (_, _) => form.ShowUpdateError(launchError);
                 Application.Run(form);

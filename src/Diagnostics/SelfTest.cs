@@ -87,6 +87,7 @@ internal static class SelfTest
             Check(tooLarge, "reject oversized source");
             UpdateSelfTest.Run(output, Check);
             RouteDiagnosticChecks.Run(Check);
+            StartupChecks.Run(Check);
             ReleaseUpdateChecks.RunAsync(output, Check).GetAwaiter().GetResult();
             ExportScriptCases(Path.Combine(Path.GetDirectoryName(output)!, "script-cases.json"));
             lines.Add("PASS actual C# generated scripts exported for JavaScript execution checks");
