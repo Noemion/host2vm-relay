@@ -49,6 +49,21 @@ public sealed partial class MainForm
         UiLayout.Add(page, UiLayout.Card("隧道偏好", "凭据仅当前 Windows 用户可解密。保存目录可在“设置”中更改。",
             UiLayout.Pair(UiLayout.Field("本机 SOCKS5 端口", socksPort), preferences, 45)));
         UiLayout.Add(page, UiLayout.Help("首次连接请核对服务器指纹。关闭窗口后连接保留在托盘，退出应用才会停止隧道。"));
+        var copyExecutionCommand = UiLayout.Button("复制关闭命令", 170);
+        var executionFeedback = UiLayout.Help(VmExecutionGuide.Recovery);
+        copyExecutionCommand.Click += (_, _) =>
+        {
+            try
+            {
+                Clipboard.SetText(VmExecutionGuide.DisableCommand);
+                copyExecutionCommand.ShowFeedback("✓ 已复制");
+                executionFeedback.Text = "命令已复制，请在麒麟虚拟机终端粘贴并执行。";
+            }
+            catch (Exception ex) { Error(ex); }
+        };
+        UiLayout.Add(page, UiLayout.Card("麒麟执行授权", VmExecutionGuide.Allow,
+            UiLayout.Help(VmExecutionGuide.Disable), UiLayout.Help(VmExecutionGuide.DisableCommand),
+            UiLayout.Actions(copyExecutionCommand), executionFeedback));
     }
     private void BuildRules()
     {
