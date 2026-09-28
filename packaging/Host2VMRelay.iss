@@ -5,7 +5,7 @@
   #define OutputRoot "..\artifacts\release"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.6.10"
+  #define AppVersion "0.6.11"
 #endif
 #ifndef AppArch
   #define AppArch "x64"
@@ -42,7 +42,8 @@ SetupIconFile=..\artifacts\assets\Host2VMRelay.Setup.ico
 UninstallDisplayIcon={app}\Host2VMRelay.exe
 CloseApplications=yes
 RestartApplications=no
-AppMutex=Local\Host2VMRelay.Desktop
+SetupMutex=Local\Host2VMRelay.Setup
+; Running applications are closed by the standard Restart Manager page.
 SetupLogging=yes
 WizardStyle=modern
 ; Re-detect the current Windows display language on every install or upgrade.
@@ -58,6 +59,10 @@ Name: "zhcn"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
+[Dirs]
+; This hook runs after Restart Manager shutdown, before new uninstall data is created.
+Name: "{app}"; BeforeInstall: RemovePreviousVersion
 
 [Files]
 Source: "{#PayloadRoot}\installer\win-{#AppArch}\Host2VMRelay.exe"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: BeforeFileInstall; AfterInstall: AfterFileInstall

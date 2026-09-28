@@ -74,7 +74,7 @@ internal static class Program
                 installer = form.PendingInstaller;
             }
             if (installer is null) return;
-            // Inno Setup checks this mutex on startup. Release it only after the
+            // Release the single-instance mutex only after the
             // UI, tray and relay have closed, before handing off the verified file.
             mutex.ReleaseMutex();
             using (installer)

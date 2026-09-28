@@ -6,6 +6,7 @@ var
   Preparing: Boolean;
   PreviousFiles: TStringList;
   PreviousVersionRemoved: Boolean;
+  PreviousUninstaller: String;
   InstallActions: TNewMemo;
   UpgradeLogPath: String;
   UpgradeLogLines: Integer;
@@ -214,9 +215,11 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
   begin
-    ReportProgress(InstallationProgressBase);
-    SetPhase(CustomMessage('ActionInstall'));
-    RecordAction(CustomMessage('ActionInstall'))
+    if CheckForMutexes('Local\Host2VMRelay.Desktop') then
+    begin
+      SetPhase(CustomMessage('ActionClose'));
+      RecordAction(CustomMessage('ActionClose'));
+    end;
   end
   else if CurStep = ssPostInstall then
   begin
@@ -230,22 +233,31 @@ procedure CurInstallProgressChanged(CurProgress, MaxProgress: Integer);
 begin
   // Preparation and old-version removal occupy 0..250. Reserve the last
   // 5% for shortcuts, registry entries and other finalization, so a completed
-  // byte counter never advertises success before ssPostInstall.
-  if MaxProgress > 0 then
+  // byte counter never advertises success before ssPostInstall. Ignore the
+  // engine's initial zero callback until the old-version removal has finished.
+  if PreviousVersionRemoved and (MaxProgress > 0) then
   begin
     ReportProgress(InstallationProgressBase +
       MulDiv(CurProgress, 950 - InstallationProgressBase, MaxProgress));
   end;
 end;
 
+// Register the old location too when the user changes the installation path.
+// The framework owns the application list, close/cancel choice and shutdown.
+procedure RegisterExtraCloseApplicationsResources;
+begin
+  if PreviousUninstaller <> '' then
+  begin
+    RegisterExtraCloseApplicationsResource(
+      AddBackslash(ExtractFileDir(PreviousUninstaller)) + 'Host2VMRelay.exe');
+    RegisterExtraCloseApplicationsResource(
+      AddBackslash(ExtractFileDir(PreviousUninstaller)) + 'native\h2vm-core.exe');
+  end;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  UninstallString: String;
-  UninstallExecutable: String;
-  PreviousVersion: String;
-  Command: String;
-  ResultCode: Integer;
-  Started: Boolean;
+  UninstallString, PreviousVersion: String;
 begin
   Result := '';
   ProgressActive := True;
@@ -255,26 +267,21 @@ begin
   PreparationPage.Show;
   try
     SetPhase(CustomMessage('ActionPrerequisites'));
-    // Check prerequisites after the wizard is visible, before removing any old files.
+    // Do not close the application or remove files until prerequisites pass.
     if not HasDesktopRuntime then
     begin
       Result := CustomMessage('RuntimeMissing');
       RecordAction(Result);
-      ProgressActive := False;
       Exit;
     end;
-    // Preparation can run again after a later prerequisite check fails.
-    if PreviousVersionRemoved then
-      Exit;
     ReportProgress(30);
     RecordAction(CustomMessage('ActionDetect'));
     InstallationProgressBase := 250;
-    if RegQueryStringValue(
-         HKCU,
-         '{#UninstallRegistryKey}',
-         'UninstallString',
-         UninstallString) then
+    PreviousUninstaller := '';
+    if RegQueryStringValue(HKCU, '{#UninstallRegistryKey}', 'UninstallString', UninstallString) then
     begin
+      // Our registration contains a quoted executable, never a shell command.
+      PreviousUninstaller := RemoveQuotes(UninstallString);
       if RegQueryStringValue(HKCU, '{#UninstallRegistryKey}', 'DisplayVersion', PreviousVersion) then
       begin
         if PreviousVersion = '{#AppVersion}' then
@@ -282,58 +289,82 @@ begin
         else
           SetVersion(PreviousVersion + '  →  {#AppVersion}');
       end;
-      SetPhase(CustomMessage('UpgradeRemoving'));
-      try
-        ReportProgress(50);
-        RecordAction(CustomMessage('UpgradeRemoving'));
-        UpgradeLogPath := ExpandConstant('{tmp}\previous-version-uninstall.log');
-        DeleteFile(UpgradeLogPath);
-        UpgradeLogLines := 0;
-        // Our Inno registration contains a quoted executable path, not a shell
-        // command. Pass arguments separately instead of interpreting registry text.
-        UninstallExecutable := RemoveQuotes(UninstallString);
-        PreviousFiles.Clear;
-        InventoryPreviousFiles(ExtractFileDir(UninstallExecutable));
-        Command := '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /LOG="' + UpgradeLogPath + '"';
-        RecordAction(CustomMessage('ActionCommand') + ' "' + UninstallExecutable + '" ' + Command);
-        UpgradeTimer := SetTimer(0, 0, 250, CreateCallback(@UpgradeLogTimer));
-        Log('Upgrade: removing the previous version after installation confirmation.');
-        Started := Exec(
-             UninstallExecutable,
-             Command,
-             '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-        ReadUpgradeLog;
-        if not Started then
-          Result := FmtMessage(CustomMessage('UpgradeLaunchFailed'), [SysErrorMessage(ResultCode)])
-        else if ResultCode <> 0 then
-          Result := FmtMessage(CustomMessage('UpgradeRemoveFailed'), [IntToStr(ResultCode)])
-        else
-        begin
-          PreviousVersionRemoved := True;
-          InstallationProgressBase := 250;
-          ReportProgress(250);
-          RecordAction(CustomMessage('ActionPrepared'));
-          Log('Upgrade: previous version removed; continuing installation.');
-        end;
-        if Result <> '' then
-          RecordAction(Result);
-      finally
-        if UpgradeTimer <> 0 then KillTimer(0, UpgradeTimer);
-        UpgradeTimer := 0;
-        ReadUpgradeLog;
-      end;
     end
     else
-    begin
       SetVersion(CustomMessage('FreshVersion') + ' {#AppVersion}');
-      ReportProgress(250);
-      RecordAction(CustomMessage('ActionFresh'));
-    end;
+    // Returning lets the native Preparing page ask to close running apps.
+    // Removing the old version here would run before Restart Manager shutdown.
   finally
     Preparing := False;
     PreparationPage.Hide;
     ProgressActive := False;
   end;
+end;
+
+procedure RemovePreviousVersion;
+var
+  Command, Failure: String;
+  ResultCode: Integer;
+  Started: Boolean;
+begin
+  if PreviousVersionRemoved then Exit;
+  // A user can decline automatic closure, or Windows may fail to close an
+  // elevated/unresponsive instance. Never uninstall or overwrite in that case.
+  if CheckForMutexes('Local\Host2VMRelay.Desktop') then
+    RaiseException(CustomMessage('ApplicationStillRunning'));
+  if PreviousUninstaller <> '' then
+  begin
+    SetPhase(CustomMessage('UpgradeRemoving'));
+    ReportProgress(50);
+    RecordAction(CustomMessage('UpgradeRemoving'));
+    UpgradeLogPath := ExpandConstant('{tmp}\previous-version-uninstall.log');
+    DeleteFile(UpgradeLogPath);
+    UpgradeLogLines := 0;
+    PreviousFiles.Clear;
+    InventoryPreviousFiles(ExtractFileDir(PreviousUninstaller));
+    Command := '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="' + UpgradeLogPath + '"';
+    RecordAction(CustomMessage('ActionCommand') + ' "' + PreviousUninstaller + '" ' + Command);
+    try
+      UpgradeTimer := SetTimer(0, 0, 250, CreateCallback(@UpgradeLogTimer));
+      Started := Exec(PreviousUninstaller, Command, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      ReadUpgradeLog;
+      Failure := '';
+      if not Started then
+        Failure := FmtMessage(CustomMessage('UpgradeLaunchFailed'), [SysErrorMessage(ResultCode)])
+      else if ResultCode <> 0 then
+        Failure := FmtMessage(CustomMessage('UpgradeRemoveFailed'), [IntToStr(ResultCode)]);
+      if Failure <> '' then
+      begin
+        RecordAction(Failure);
+        RaiseException(Failure);
+      end;
+      RecordAction(CustomMessage('ActionPrepared'));
+    finally
+      if UpgradeTimer <> 0 then KillTimer(0, UpgradeTimer);
+      UpgradeTimer := 0;
+      ReadUpgradeLog;
+    end;
+  end
+  else
+    RecordAction(CustomMessage('ActionFresh'));
+  PreviousVersionRemoved := True;
+  ReportProgress(250);
+  SetPhase(CustomMessage('ActionInstall'));
+  RecordAction(CustomMessage('ActionInstall'));
+end;
+
+function InitializeUninstall: Boolean;
+begin
+  // AppMutex would block Setup before its close-applications page. Preserve
+  // the same protection for a standalone uninstall through this event instead.
+  Result := True;
+  while CheckForMutexes('Local\Host2VMRelay.Desktop') do
+    if SuppressibleMsgBox(CustomMessage('UninstallApplicationRunning'),
+      mbError, MB_RETRYCANCEL, IDCANCEL) <> IDRETRY then
+    begin
+      Result := False;
+      Exit;
+    end;
 end;
 
 // User configuration and its location pointer are intentionally retained.
@@ -371,3 +402,10 @@ zhcn.UpgradeRemoveFailed=旧版本卸载失败（退出代码：%1）。安装�
 en.UpgradeRemoving=Upgrading to the new version...
 en.UpgradeLaunchFailed=Could not start the previous version's uninstaller: %1. Resolve the problem and retry.
 en.UpgradeRemoveFailed=The previous version could not be removed (exit code: %1). Installation has stopped. Resolve the problem and retry.
+
+zhcn.ActionClose=正在关闭运行中的应用。当前转发连接将断开。
+en.ActionClose=Closing running applications. Active relay connections will be disconnected.
+zhcn.ApplicationStillRunning=Host2VMRelay 仍在运行，尚未移除旧版本。请重新运行安装程序，并允许安装向导自动关闭应用。
+en.ApplicationStillRunning=Host2VMRelay is still running. The previous version has not been removed. Run Setup again and allow the wizard to close the application automatically.
+zhcn.UninstallApplicationRunning=Host2VMRelay 仍在运行。请退出应用后点击“重试”，或取消卸载。
+en.UninstallApplicationRunning=Host2VMRelay is still running. Exit the application and click Retry, or cancel uninstall.
