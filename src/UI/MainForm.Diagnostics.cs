@@ -5,7 +5,7 @@ public sealed partial class MainForm
     private void Restore()
     {
         Show(); WindowState = FormWindowState.Normal; Activate();
-        UiLayout.FitToScreen(this, new Size(680, 520)); UpdateShellLayout();
+        UiLayout.FitToScreen(this, UiLayout.MinimumWindow); UpdateShellLayout();
         Invalidate(true);
     }
     public void ExitForTest() { quitting = true; Close(); }
@@ -80,8 +80,7 @@ public sealed partial class MainForm
                     failures.Add($"{stage}: label leaves unused column width: {label.Text}; {label.Width}/{available}");
             }
             painted = navigationButtons.Sum(b => b.PaintCount);
-            bool compact = navigation?.Parent == compactNavigation;
-            int expected = compact ? 0 : UiTheme.Px(this, 204);
+            int expected = UiTheme.Px(this, 204);
             float actual = shellBody!.ColumnStyles[0].Width;
             if (Math.Abs(actual - expected) > 1) failures.Add(stage + ": sidebar was scaled twice");
             if (navigationButtons.Any(b => b.Height < TextRenderer.MeasureText(b.Text, b.Font).Height)) failures.Add(stage + ": navigation text is clipped");
@@ -111,7 +110,7 @@ public sealed partial class MainForm
         }
     }
 
-    public void CaptureTabs(string path, float layoutScale = 1F, bool requireNativeDpi = false, bool compactViewport = false)
+    public void CaptureTabs(string path, float layoutScale = 1F, bool requireNativeDpi = false)
     {
         var audit = new UiAcceptance(path, (int)Math.Round(layoutScale * 100), requireNativeDpi);
         try
@@ -146,6 +145,10 @@ public sealed partial class MainForm
                 audit.Check(pageTitle?.Text == PageTitles[i], "page heading follows navigation: " + i);
             }
             SelectPage(1);
+            aboutButton!.PerformClick(); UiAcceptance.Settle(this);
+            audit.Check(pages.SelectedIndex == AboutPageIndex && !installUpdate.Enabled, "about opens in the main window without offering an unchecked update");
+            pages.Pages[AboutPageIndex].Controls.Find("backFromAbout", true).OfType<Button>().Single().PerformClick();
+            audit.Check(pages.SelectedIndex == 1, "about returns to the previous page");
             string originalRules = ruleText.Text, savedRules = settings.Rules;
             var ruleSummary = pages.Pages[1].Controls.Find("ruleSummary", true).OfType<Label>().Single();
             ruleText.Text = "# comment only\r\n";
@@ -170,11 +173,6 @@ public sealed partial class MainForm
             SelectPage(0);
             int startDpi = DeviceDpi; var fonts = UiAcceptance.FontBaseline(this);
             audit.ApplyDpi(this, audit.TargetDpi); audit.VerifyFontScaling(fonts, startDpi, audit.TargetDpi);
-            if (compactViewport)
-            {
-                MinimumSize = new Size(Math.Min(MinimumSize.Width, 1024), Math.Min(MinimumSize.Height, 720));
-                Size = new Size(1024, 720); UiAcceptance.Settle(this);
-            }
             audit.Check(windowIcon?.Width == 32 * audit.TargetDpi / 96, "window icon has requested pixel size");
             audit.Check(trayIcon?.Width == 16 * audit.TargetDpi / 96, "tray icon has requested pixel size");
             var previousCaption = state.Text; var previousColor = state.ForeColor; var previousFeed = feed.Text;
@@ -217,17 +215,9 @@ public sealed partial class MainForm
                 dialog.Show(this); UiAcceptance.Settle(dialog);
                 int dialogDpi = dialog.DeviceDpi; var dialogFonts = UiAcceptance.FontBaseline(dialog);
                 audit.ApplyDpi(dialog, audit.TargetDpi); audit.VerifyFontScaling(dialogFonts, dialogDpi, audit.TargetDpi);
-                audit.Check(dialog.EditorViewportHeight >= UiTheme.Px(dialog, 90), "script viewport retains usable height in a compact window");
+                audit.Check(dialog.EditorViewportHeight >= UiTheme.Px(dialog, 90), "script viewport retains usable height");
                 dialog.VerifyLayoutForTest(audit);
                 audit.Inspect(dialog, "script-dialog");
-                // Preserve the physical window width and only shrink it; a
-                // ClientSize assignment can change borders after injected DPI.
-                var fullBounds = dialog.Bounds;
-                dialog.Height = Math.Min(dialog.Height, UiTheme.Px(dialog, 520));
-                UiLayout.FitToScreen(dialog, new Size(680, 520));
-                UiAcceptance.Settle(dialog); dialog.VerifyLayoutForTest(audit);
-                audit.Inspect(dialog, "script-short");
-                dialog.Bounds = fullBounds; UiAcceptance.Settle(dialog);
                 if (!requireNativeDpi && dialogDpi != audit.TargetDpi)
                 {
                     audit.ApplyDpi(dialog, dialogDpi); audit.VerifyFontScaling(dialogFonts, dialogDpi, dialogDpi);
@@ -240,6 +230,12 @@ public sealed partial class MainForm
             }
             audit.InspectTrayMenu(this, dark: true);
             audit.InspectTrayMenu(this, dark: false);
+            var originalBounds = Bounds;
+            Size = new Size(1, 1); UiAcceptance.Settle(this);
+            audit.Check(Width >= MinimumSize.Width && Height >= MinimumSize.Height && navigation?.Parent == sidebar && sidebar!.Visible,
+                "minimum window size preserves the fixed sidebar");
+            SelectPage(AboutPageIndex); audit.Inspect(this, "minimum-window");
+            Bounds = originalBounds; UiAcceptance.Settle(this);
             if (!requireNativeDpi && startDpi != audit.TargetDpi)
             {
                 SelectPage(0);

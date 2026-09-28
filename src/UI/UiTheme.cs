@@ -171,7 +171,6 @@ internal sealed class NavigationButton : ActionButton
 {
     private bool selected;
     public int PageIndex { get; init; }
-    public bool Compact { get; set; }
     public bool Selected
     {
         get => selected;
@@ -220,6 +219,12 @@ internal sealed class NavigationButton : ActionButton
         {
             graphics.DrawRectangle(pen, x, y, s, s); graphics.DrawLine(pen, x + s * .2F, y + s * .3F, x + s * .4F, y + s * .5F);
             graphics.DrawLine(pen, x + s * .4F, y + s * .5F, x + s * .2F, y + s * .7F); graphics.DrawLine(pen, x + s * .55F, y + s * .7F, x + s * .8F, y + s * .7F);
+        }
+        else if (PageIndex == 5)
+        {
+            graphics.DrawEllipse(pen, x, y, s, s);
+            graphics.DrawLine(pen, x + s * .5F, y + s * .45F, x + s * .5F, y + s * .75F);
+            graphics.DrawEllipse(pen, x + s * .47F, y + s * .23F, s * .06F, s * .06F);
         }
         else
         {

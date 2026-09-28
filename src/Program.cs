@@ -25,6 +25,7 @@ internal static class Program
             }
             if (!smoke) Settings.InitializeLocation();
             UiTheme.Configure(Settings.Load());
+            if (!smoke) { RunDesktop(mutex); return; }
             using var form = new MainForm();
             if (startupCheck) form.CheckStartup(smokeOutput!);
             else if (smoke)
@@ -45,7 +46,7 @@ internal static class Program
                 }
                 form.Shown += async (_, _) =>
                 {
-                    try { await Task.Delay(300); form.CaptureTabs(smokeOutput!, percent / 100F, native, args.Contains("--compact-viewport")); }
+                    try { await Task.Delay(300); form.CaptureTabs(smokeOutput!, percent / 100F, native); }
                     catch (Exception ex) { File.WriteAllText(Path.ChangeExtension(smokeOutput!, ".txt"), "FAIL " + ex); Environment.ExitCode = 1; }
                     finally { form.ExitForTest(); }
                 };
@@ -56,6 +57,32 @@ internal static class Program
         {
             if (smoke) { File.WriteAllText(Path.ChangeExtension(smokeOutput!, ".txt"), "FAIL " + ex); Environment.ExitCode = 1; }
             else MessageBox.Show(ex.Message, "启动失败", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private static void RunDesktop(Mutex mutex)
+    {
+        _ = Task.Run(() => new UpdateCache(UpdateCache.DefaultRoot).Cleanup());
+        string? launchError = null;
+        while (true)
+        {
+            PreparedInstaller? installer;
+            using (var form = new MainForm())
+            {
+                if (launchError is not null) form.Shown += (_, _) => form.ShowUpdateError(launchError);
+                Application.Run(form);
+                installer = form.PendingInstaller;
+            }
+            if (installer is null) return;
+            // Inno Setup checks this mutex on startup. Release it only after the
+            // UI, tray and relay have closed, before handing off the verified file.
+            mutex.ReleaseMutex();
+            using (installer)
+            {
+                try { installer.Launch(); return; }
+                catch (Exception ex) { launchError = "安装程序未能启动，应用已重新打开：" + ex.Message; }
+            }
+            if (!mutex.WaitOne(0)) return; // Another instance already restored the application.
         }
     }
 }

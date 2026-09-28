@@ -4,6 +4,7 @@ namespace Host2VMRelay;
 
 internal static class UiLayout
 {
+    public static readonly Size MinimumWindow = new(1100, 700);
     public static float BaseFontPoints => UiTheme.FontPoints;
     public static Font BodyFont() => new("Microsoft YaHei UI", BaseFontPoints, FontStyle.Regular, GraphicsUnit.Point);
     public static Font CodeFont() => new("Consolas", BaseFontPoints, FontStyle.Regular, GraphicsUnit.Point);
@@ -116,7 +117,11 @@ internal static class UiLayout
         fontTrackers.GetValue(form, f => new ExplicitFonts(f)).Apply();
         if (form.WindowState != FormWindowState.Normal) return;
         Rectangle area = Screen.FromHandle(form.Handle).WorkingArea;
-        form.MinimumSize = new Size(Math.Min(UiTheme.Px(form, logicalMinimum.Width), area.Width), Math.Min(UiTheme.Px(form, logicalMinimum.Height), area.Height));
+        // Content and font scales are independent. Shrinking spacing must not
+        // make the fixed sidebar shorter than its text-sized navigation buttons.
+        double minimumScale = Math.Max(UiTheme.ContentScale, .8 * UiTheme.FontPoints / 9.0) * form.DeviceDpi / 96.0;
+        form.MinimumSize = new Size(Math.Min((int)Math.Ceiling(logicalMinimum.Width * minimumScale), area.Width),
+            Math.Min((int)Math.Ceiling(logicalMinimum.Height * minimumScale), area.Height));
         int width = Math.Min(form.Width, area.Width), height = Math.Min(form.Height, area.Height);
         form.Bounds = new Rectangle(Math.Clamp(form.Left, area.Left, area.Right - width), Math.Clamp(form.Top, area.Top, area.Bottom - height), width, height);
     }

@@ -30,7 +30,7 @@ internal sealed class ScriptDialog : Form
         this.generate = generate; this.embedded = embedded; SuspendLayout(); DoubleBuffered = true;
         Font = UiLayout.BodyFont(); ForeColor = UiTheme.Ink; BackColor = UiTheme.Canvas;
         AutoScaleDimensions = new SizeF(96F, 96F); AutoScaleMode = AutoScaleMode.Dpi;
-        Text = "Host2VMRelay — 脚本工作区"; ClientSize = UiTheme.Size(1080, 780); MinimumSize = UiTheme.Size(680, 520);
+        Text = "Host2VMRelay — 脚本工作区"; ClientSize = UiTheme.Size(1100, 780); MinimumSize = UiTheme.Size(UiLayout.MinimumWindow.Width, UiLayout.MinimumWindow.Height);
         StartPosition = FormStartPosition.CenterParent; UpdateIcon(96);
         if (embedded) { TopLevel = false; FormBorderStyle = FormBorderStyle.None; MinimumSize = Size.Empty; Dock = DockStyle.Fill; }
         var root = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, RowCount = 6, Padding = UiTheme.Spacing(22), Margin = Padding.Empty };
@@ -89,7 +89,7 @@ internal sealed class ScriptDialog : Form
         copy.Click += (_, _) => Copy(); save.Click += (_, _) => SaveOutput();
         workspaceScroll.ClientSizeChanged += (_, _) => UpdateWorkspaceLayout();
         chrome.Layout += (_, _) => UpdateWorkspaceLayout();
-        Load += (_, _) => { workspaceLayoutReady = true; UpdateIcon(DeviceDpi); if (!embedded) UiLayout.FitToScreen(this, new Size(680, 520)); UpdateWorkspaceLayout(); };
+        Load += (_, _) => { workspaceLayoutReady = true; UpdateIcon(DeviceDpi); if (!embedded) UiLayout.FitToScreen(this, UiLayout.MinimumWindow); UpdateWorkspaceLayout(); };
         DpiChanged += (_, e) =>
         {
             workspaceLayoutReady = false; UpdateIcon(e.DeviceDpiNew);
@@ -97,7 +97,7 @@ internal sealed class ScriptDialog : Form
             {
                 if (IsDisposed) return;
                 workspaceLayoutReady = true;
-                if (!embedded) UiLayout.FitToScreen(this, new Size(680, 520));
+                if (!embedded) UiLayout.FitToScreen(this, UiLayout.MinimumWindow);
                 UpdateWorkspaceLayout();
             });
         };
@@ -109,11 +109,10 @@ internal sealed class ScriptDialog : Form
         layingOut = true;
         try
         {
-            bool compact = ClientSize.Width * 96.0 / Math.Max(96, DeviceDpi) < UiTheme.Units(860) || ClientSize.Height * 96.0 / Math.Max(96, DeviceDpi) < UiTheme.Units(560);
-            chrome.Padding = new Padding(UiTheme.Px(this, compact ? 12 : 22));
-            viewport.Margin = new Padding(0, UiTheme.Px(this, compact ? 4 : 8), 0, UiTheme.Px(this, compact ? 4 : 8));
+            chrome.Padding = new Padding(UiTheme.Px(this, 22));
+            viewport.Margin = new Padding(0, UiTheme.Px(this, 8), 0, UiTheme.Px(this, 8));
             // Keep an editable viewport even when text and actions consume most
-            // of a small/high-DPI window. Overflow scrolls the workspace instead
+            // of a high-DPI window. Overflow scrolls the workspace instead
             // of squeezing the editor to zero or overlapping the action rows.
             // Layout events run before the table updates its row cache. Measure
             // at the current width instead of reusing the previous row heights.

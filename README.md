@@ -39,7 +39,7 @@ VMware NAT 流量由宿主机的 `vmnat.exe` 发起。生成的 TCP、UDP 规则
 
 默认配置目录是 Windows 实际“文档/Host2VMRelay”（支持重定向）。在**设置 → 配置存储 → 更改目录**中迁移已保存配置；已有目标需确认后先备份再替换，原目录保留。路径定位文件是 `%LOCALAPPDATA%\Host2VMRelay\storage.json`，只保存路径，不保存凭据。自定义目录不可用时明确报错，不偷偷切换到空白配置。卸载不删除配置；跨 Windows 用户迁移后需重新输入凭据。
 
-界面采用紧凑卡片、9.6pt 正文和编辑字体，内容尺寸约为 v0.5.0 的 80%。Windows DPI 感知保持 PerMonitorV2；侧边／顶部导航、五个页面和脚本工作区按可用宽度重排。Alt+1～Alt+5 切换页面；Ctrl+Tab 循环；脚本工作区 Ctrl+Enter 生成并复制。
+界面采用卡片布局，默认正文和编辑字体为 9 pt。左侧导航固定显示，左下角“关于”提供项目链接和版本更新。窗口有最小尺寸限制，Windows DPI 感知保持 PerMonitorV2，显示设置可调整内容缩放和字体大小。Alt+1～Alt+6 切换页面，Ctrl+Tab 循环；脚本工作区 Ctrl+Enter 生成并复制。
 
 ## 开发与验收
 

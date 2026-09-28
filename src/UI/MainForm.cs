@@ -37,10 +37,10 @@ public sealed partial class MainForm : Form
         SuspendLayout(); DoubleBuffered = true;
         Text = "Host2VMRelay"; Font = UiLayout.BodyFont(); ForeColor = UiTheme.Ink;
         AutoScaleDimensions = new SizeF(96F, 96F); AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = UiTheme.Size(1100, 780); MinimumSize = UiTheme.Size(680, 520);
+        ClientSize = UiTheme.Size(1100, 780); MinimumSize = UiTheme.Size(UiLayout.MinimumWindow.Width, UiLayout.MinimumWindow.Height);
         BackColor = UiTheme.Canvas; StartPosition = FormStartPosition.CenterScreen;
         disconnect.Enabled = false; UpdateIcons(96);
-        BuildShell(); BuildConnection(); BuildRules(); BuildClash(); BuildLog(); BuildSettings(); RefreshNavigation();
+        BuildShell(); BuildConnection(); BuildRules(); BuildClash(); BuildLog(); BuildSettings(); BuildAbout(); RefreshNavigation();
         host.Text = settings.Host; port.Value = settings.Port; user.Text = settings.User; socksPort.Value = settings.SocksPort;
         keyPath.Text = settings.KeyPath; auth.SelectedIndex = settings.UseKey ? 1 : 0;
         enableUdp.Checked = settings.EnableUdp;
@@ -93,7 +93,7 @@ public sealed partial class MainForm : Form
             {
                 if (IsDisposed) return;
                 shellLayoutReady = true;
-                UiLayout.FitToScreen(this, new Size(680, 520)); UpdateShellLayout();
+                UiLayout.FitToScreen(this, UiLayout.MinimumWindow); UpdateShellLayout();
             });
         };
         logTimer.Tick += (_, _) =>
@@ -124,7 +124,7 @@ public sealed partial class MainForm : Form
         try
         {
             UpdateIcons(DeviceDpi);
-            UiLayout.FitToScreen(this, new Size(680, 520));
+            UiLayout.FitToScreen(this, UiLayout.MinimumWindow);
             UpdateShellLayout();
         }
         finally { ResumeLayout(true); }

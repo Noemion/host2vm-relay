@@ -2,11 +2,11 @@
 
 ## Automated regression gate
 
-The compact design uses a 9.6pt base font and 80% logical content sizes. These design tokens do not change the OS DPI or multiply the system scale a second time.
+The design uses a 9pt base font and 80% logical content sizes by default. These design tokens do not change the OS DPI or multiply the system scale a second time. Navigation stays on the left and windows enforce a shared minimum design size.
 
 `./build.ps1 -Test` runs independent 100%, 125%, 150%, 175% and 200% checks. Each process uses isolated settings and rule files under `artifacts/checks/`; personal credentials, the live Clash rule file and Windows display settings are not changed.
 
-The tests inject WM_DPICHANGED into real WinForms windows, checking DeviceDpi and proportional text metrics, full button captions, labels, editor line height, sibling overlap, scroll reachability, keyboard focus, window work-area bounds and exact icon sizes. The five main pages and script dialog are covered. Three DPI round trips exercise repeated scaling and font restoration. JSON metrics, top/scrolled screenshots and a Markdown summary are retained even when an assertion fails. A completed screenshot alone is not a pass.
+The tests inject WM_DPICHANGED into real WinForms windows, checking DeviceDpi and proportional text metrics, full button captions, labels, editor line height, sibling overlap, scroll reachability, keyboard focus, window work-area bounds and exact icon sizes. The six main pages and script dialog are covered. A DPI round trip exercises scaling and font restoration. JSON metrics, top/scrolled screenshots and a Markdown summary are retained even when an assertion fails. A completed screenshot alone is not a pass.
 
 Message injection is NOT a physical display change. Every report records both WinForms DeviceDpi and native GetDpiForWindow. Hosted CI additionally runs native 100% acceptance when its desktop is at 96 DPI. High-DPI native and cross-monitor checks must not be reported as passed on that runner.
 

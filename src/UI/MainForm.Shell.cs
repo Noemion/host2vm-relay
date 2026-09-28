@@ -4,20 +4,17 @@ public sealed partial class MainForm
 {
     private readonly List<NavigationButton> navigationButtons = new();
     private TableLayoutPanel? shellBody, sidebar, contentArea;
-    private Panel? compactNavigation;
     private FlowLayoutPanel? navigation;
+    private NavigationButton? aboutButton;
     private Label? pageTitle, pageDescription;
     private PictureBox? brandImage;
     private bool changingShell;
     private bool shellLayoutReady;
-    private static readonly string[] PageTitles = { "连接虚拟机", "转发规则", "Clash 接入", "运行日志", "设置" };
-    private static readonly string[] PageDescriptions = { "通过 SSH，连接你信任的网络。", "只转发指定的域名、IP 与网段。", "一次接入，后续规则自动更新。", "连接、规则与诊断，一目了然。", "配置存储与显示偏好。" };
+    private static readonly string[] PageTitles = { "连接虚拟机", "转发规则", "Clash 接入", "运行日志", "设置", "关于" };
+    private static readonly string[] PageDescriptions = { "通过 SSH，连接你信任的网络。", "只转发指定的域名、IP 与网段。", "一次接入，后续规则自动更新。", "连接、规则与诊断，一目了然。", "配置存储与显示偏好。", "项目信息与软件更新。" };
 
     private void BuildShell()
     {
-        var outer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty, BackColor = UiTheme.Canvas };
-        outer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); outer.RowStyles.Add(new RowStyle(SizeType.AutoSize)); outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        compactNavigation = new Panel { Dock = DockStyle.Top, AutoSize = true, Margin = Padding.Empty, Padding = UiTheme.Spacing(16, 10, 16, 0), BackColor = UiTheme.Sidebar, Visible = false };
         shellBody = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
         shellBody.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, UiTheme.Units(204))); shellBody.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); shellBody.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         sidebar = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Margin = Padding.Empty, Padding = UiTheme.Spacing(14, 26, 14, 20), BackColor = UiTheme.Sidebar };
@@ -28,7 +25,8 @@ public sealed partial class MainForm
         using (var icon = AppIcon.Load(128)) brandImage.Image = icon.ToBitmap();
         UiLayout.Add(brand, brandImage); brandImage.Dock = DockStyle.None;
         UiLayout.Add(brand, UiLayout.Heading("Host2VMRelay", 12)); UiLayout.Add(brand, UiLayout.Help("选择性网络中继")); sidebar.Controls.Add(brand, 0, 0);
-        navigation = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = Padding.Empty, BackColor = UiTheme.Sidebar };
+        navigation = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = Padding.Empty, BackColor = UiTheme.Sidebar };
         string[] labels = { "连接", "转发规则", "Clash 接入", "运行日志", "设置" };
         for (int i = 0; i < labels.Length; i++)
         {
@@ -36,8 +34,10 @@ public sealed partial class MainForm
             button.Click += (_, _) => SelectPage(button.PageIndex); navigationButtons.Add(button); navigation.Controls.Add(button);
         }
         sidebar.Controls.Add(navigation, 0, 1);
-        var footer = UiLayout.Stack(); UiLayout.Add(footer, UiLayout.Help("仅转发选定流量"));
-        UiLayout.Add(footer, UiLayout.Help("v" + (typeof(MainForm).Assembly.GetName().Version?.ToString(3) ?? ""))); sidebar.Controls.Add(footer, 0, 2);
+        var sidebarFooter = UiLayout.Stack();
+        aboutButton = new NavigationButton { PageIndex = AboutPageIndex, Text = "关于", AccessibleName = "关于", Name = "navigation-5" };
+        aboutButton.Click += (_, _) => SelectPage(AboutPageIndex);
+        navigationButtons.Add(aboutButton); UiLayout.Add(sidebarFooter, aboutButton); sidebar.Controls.Add(sidebarFooter, 0, 2);
         contentArea = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Margin = Padding.Empty, Padding = UiTheme.Spacing(26, 22, 26, 12), BackColor = UiTheme.Canvas };
         contentArea.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         contentArea.RowStyles.Add(new RowStyle(SizeType.AutoSize)); contentArea.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); contentArea.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -52,12 +52,13 @@ public sealed partial class MainForm
         contentArea.Controls.Add(header, 0, 0); contentArea.Controls.Add(pages, 0, 1);
         feed.Margin = UiTheme.Spacing(0, 10, 0, 0); contentArea.Controls.Add(feed, 0, 2);
         shellBody.Controls.Add(sidebar, 0, 0); shellBody.Controls.Add(contentArea, 1, 0);
-        outer.Controls.Add(compactNavigation, 0, 0); outer.Controls.Add(shellBody, 0, 1); Controls.Add(outer);
+        Controls.Add(shellBody);
         pages.SelectedIndexChanged += (_, _) => RefreshNavigation(); SizeChanged += (_, _) => UpdateShellLayout();
         FormClosed += (_, _) => { brandImage.Image?.Dispose(); brandImage.Image = null; }; UpdateShellLayout();
     }
     private void SelectPage(int index)
     {
+        if (index == AboutPageIndex && pages.SelectedIndex != AboutPageIndex) aboutReturnPage = pages.SelectedIndex;
         if (index < 0 || index >= pages.PageCount) return; pages.SelectedIndex = index; RefreshNavigation();
     }
     private void RefreshNavigation()
@@ -69,37 +70,23 @@ public sealed partial class MainForm
     }
     private void UpdateShellLayout()
     {
-        if (!shellLayoutReady || changingShell || shellBody is null || sidebar is null || compactNavigation is null || navigation is null || contentArea is null) return;
+        if (!shellLayoutReady || changingShell || shellBody is null || contentArea is null) return;
         changingShell = true;
         try
         {
-            // Large independent fonts need more room even when content scale is small.
-            bool compact = ClientSize.Width * 96.0 / Math.Max(96, DeviceDpi) < Math.Max(UiTheme.Units(860), 688 * UiTheme.FontPoints / 9.6F);
-            var hostPanel = compact ? compactNavigation : (Control)sidebar;
-            if (navigation.Parent != hostPanel)
-            {
-                navigation.Parent?.Controls.Remove(navigation);
-                if (compact) compactNavigation.Controls.Add(navigation); else sidebar.Controls.Add(navigation, 0, 1);
-            }
-            compactNavigation.Visible = compact; sidebar.Visible = !compact;
-            if (pageDescription is not null) pageDescription.Visible = !compact;
-            shellBody.ColumnStyles[0].Width = compact ? 0 : UiTheme.Px(this, 204);
-            navigation.FlowDirection = compact ? FlowDirection.LeftToRight : FlowDirection.TopDown;
-            navigation.WrapContents = compact; navigation.AutoSize = compact; navigation.Dock = compact ? DockStyle.Top : DockStyle.Fill;
-            string[] shortNames = { "连接", "规则", "Clash 接入", "日志", "设置" }; string[] longNames = { "连接", "转发规则", "Clash 接入", "运行日志", "设置" };
+            shellBody.ColumnStyles[0].Width = UiTheme.Px(this, 204);
             foreach (var button in navigationButtons)
             {
-                button.Compact = compact; button.Text = compact ? shortNames[button.PageIndex] : longNames[button.PageIndex];
-                int minimumWidth = compact ? button.PageIndex == 2 ? 130 : 82 : 174;
-                button.MinimumSize = new Size(UiTheme.Px(this, minimumWidth), UiTheme.Px(this, compact ? 40 : 44));
-                button.Margin = new Padding(0, 0, UiTheme.Px(this, compact ? 6 : 0), UiTheme.Px(this, 6));
+                button.MinimumSize = new Size(UiTheme.Px(this, 174), UiTheme.Px(this, 44));
+                button.Margin = new Padding(0, 0, 0, UiTheme.Px(this, 6));
             }
-            contentArea.Padding = new Padding(UiTheme.Px(this, compact ? 16 : 26), UiTheme.Px(this, compact ? 10 : 22), UiTheme.Px(this, compact ? 16 : 26), UiTheme.Px(this, 10));
+            contentArea.Padding = new Padding(UiTheme.Px(this, 26), UiTheme.Px(this, 22), UiTheme.Px(this, 26), UiTheme.Px(this, 10));
         }
         finally { changingShell = false; }
     }
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (pages.SelectedIndex == AboutPageIndex && keyData == (Keys.Alt | Keys.Left)) { SelectPage(aboutReturnPage); return true; }
         for (int i = 0; i < PageTitles.Length; i++) if (keyData == (Keys.Alt | (Keys)((int)Keys.D1 + i))) { SelectPage(i); return true; }
         if (keyData == (Keys.Control | Keys.Tab)) { SelectPage((pages.SelectedIndex + 1) % pages.PageCount); return true; }
         if (keyData == (Keys.Control | Keys.Shift | Keys.Tab)) { SelectPage((pages.SelectedIndex + pages.PageCount - 1) % pages.PageCount); return true; }
