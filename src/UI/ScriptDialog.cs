@@ -112,16 +112,23 @@ internal sealed class ScriptDialog : Form
             bool compact = ClientSize.Width * 96.0 / Math.Max(96, DeviceDpi) < UiTheme.Units(860) || ClientSize.Height * 96.0 / Math.Max(96, DeviceDpi) < UiTheme.Units(560);
             chrome.Padding = new Padding(UiTheme.Px(this, compact ? 12 : 22));
             viewport.Margin = new Padding(0, UiTheme.Px(this, compact ? 4 : 8), 0, UiTheme.Px(this, compact ? 4 : 8));
-            // Ask the parent to remeasure wrapped text after compact padding or
-            // DPI changes; otherwise the previous row height can be cached.
-            chrome.PerformLayout(status, nameof(status.Font));
             // Keep an editable viewport even when text and actions consume most
             // of a small/high-DPI window. Overflow scrolls the workspace instead
             // of squeezing the editor to zero or overlapping the action rows.
-            int fixedRows = chrome.GetRowHeights().Where((_, row) => row != 2).Sum();
-            int tabsHeight = viewport.GetRowHeights()[0];
+            // Layout events run before the table updates its row cache. Measure
+            // at the current width instead of reusing the previous row heights.
+            int width = Math.Max(1, workspaceScroll.ClientSize.Width - chrome.Padding.Horizontal);
+            int Measure(Control control) => control.GetPreferredSize(new Size(Math.Max(1, width - control.Margin.Horizontal), 0)).Height + control.Margin.Vertical;
+            int fixedRows = chrome.Controls.Cast<Control>().Where(control => chrome.GetRow(control) != 2).Sum(Measure);
+            int tabsHeight = Measure(viewport.GetControlFromPosition(0, 0)!);
+            // User font size and native scrollbars can exceed the logical
+            // viewport minimum, especially while moving between DPI scales.
+            int textHeight = new[] { source, output }.Max(editor => TextRenderer.MeasureText("Ag国", editor.Font,
+                Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Height);
+            int editorHeight = Math.Max(UiTheme.Px(this, 90), 2 * textHeight + SystemInformation.HorizontalScrollBarHeight +
+                Math.Max(originalFrame.Padding.Vertical, generatedFrame.Padding.Vertical) + 4);
             int minimumHeight = chrome.Padding.Vertical + fixedRows + tabsHeight +
-                viewport.Margin.Vertical + UiTheme.Px(this, 90);
+                viewport.Margin.Vertical + editorHeight;
             chrome.Height = Math.Max(workspaceScroll.ClientSize.Height, minimumHeight);
         }
         finally { layingOut = false; }

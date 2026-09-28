@@ -29,6 +29,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Setup icon format tests failed.' }
 & node (Join-Path $repoRoot 'tests\test-assets.cjs')
 if ($LASTEXITCODE -ne 0) { throw 'Icon and DPI configuration checks failed.' }
 if ($Smoke) {
+    # Observe first navigation without the repeated layout passes used by the
+    # screenshot audit. Include the larger saved appearance settings.
+    $startupFolder = Join-Path $checks 'natural-startup'
+    $startupSettings = Join-Path $startupFolder 'smoke-settings'
+    New-Item -ItemType Directory -Force $startupSettings | Out-Null
+    '{"UiScalePercent":110,"FontSizePoints":10.0}' | Set-Content (Join-Path $startupSettings 'settings.json') -Encoding utf8
+    $startupReport = Join-Path $startupFolder 'report.json'
+    Invoke-AppCheck "--startup-check `"$startupReport`"" $startupReport
     & (Join-Path $PSScriptRoot 'test-dpi.ps1') -Executable $Executable -Scale @(100,125,150,175,200)
     if ($env:GITHUB_ACTIONS -eq 'true') {
         & (Join-Path $PSScriptRoot 'test-dpi.ps1') -Executable $Executable -Native -Scale 100

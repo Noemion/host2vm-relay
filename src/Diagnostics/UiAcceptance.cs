@@ -151,8 +151,10 @@ internal sealed class UiAcceptance
             }
             if (c is TextBoxBase editor)
             {
-                int minimum = glyph + 2 + (editor is TextBox text && text.Multiline && text.ScrollBars is ScrollBars.Both or ScrollBars.Horizontal
-                    ? SystemInformation.HorizontalScrollBarHeight : 0);
+                // ClientSize already excludes native scrollbars and borders.
+                // Adding scrollbar height again incorrectly rejects a readable
+                // short editor, especially with a large native DPI scrollbar.
+                int minimum = glyph + 2;
                 Check(c.ClientSize.Height + 2 >= minimum, $"editor has a readable line: {Identity(c)} ({c.ClientSize.Height} >= {minimum})");
             }
         }
@@ -189,7 +191,7 @@ internal sealed class UiAcceptance
         }
         Screenshot(form, name + "-scrolled.png");
         stages.Add(new { Stage = name, Method = native ? "native-monitor" : "injected-WM_DPICHANGED",
-            ScreenshotMethod = "window-PrintWindow", NativeDpi = GetDpiForWindow(form.Handle), ManagedDpi = form.DeviceDpi,
+            ScreenshotMethod = "client-area-PrintWindow", NativeDpi = GetDpiForWindow(form.Handle), ManagedDpi = form.DeviceDpi,
             Window = form.Bounds.ToString(), WorkArea = area.ToString(), Controls = measurements });
     }
     private static void Reveal(Control control)
@@ -303,11 +305,16 @@ internal sealed class UiAcceptance
     private void Screenshot(Control form, string name)
     {
         form.Refresh(); Application.DoEvents(); Thread.Sleep(80);
-        using var bitmap = new Bitmap(form.Width, form.Height);
+        // DWM owns the invisible resize margin and visible window border.
+        // PrintWindow does not reliably render those on an isolated desktop.
+        // Capture the application client area explicitly instead of exporting
+        // unpainted black frame pixels or retouching the rendered UI.
+        bool clientOnly = form is Form;
+        using var bitmap = new Bitmap(clientOnly ? form.ClientSize.Width : form.Width, clientOnly ? form.ClientSize.Height : form.Height);
         using (var graphics = Graphics.FromImage(bitmap))
         {
             var dc = graphics.GetHdc();
-            try { Check(PrintWindow(form.Handle, dc, 2), "window rendering capture succeeds"); }
+            try { Check(PrintWindow(form.Handle, dc, clientOnly ? 3U : 2U), "window rendering capture succeeds"); }
             finally { graphics.ReleaseHdc(dc); }
         }
         var colors = new HashSet<int>();
@@ -315,6 +322,7 @@ internal sealed class UiAcceptance
         for (int y = 0; y < bitmap.Height; y += stride)
             for (int x = 0; x < bitmap.Width; x += stride) colors.Add(bitmap.GetPixel(x, y).ToArgb());
         Check(colors.Count > 8, "window capture contains rendered content");
+        stages.Add(new { Stage = stage, CaptureFile = name, CaptureArea = clientOnly ? "client" : "window", BitmapSize = bitmap.Size.ToString() });
         bitmap.Save(Path.Combine(folder, name));
     }
     public void Finish(string output)
