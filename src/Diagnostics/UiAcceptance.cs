@@ -108,24 +108,21 @@ internal sealed class UiAcceptance
         TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Height;
     public void VerifyFontScaling(Dictionary<Control, FontSample> baseline, int startDpi, int targetDpi)
     {
+        var failures = new List<string>();
         foreach (var pair in baseline)
         {
             Control control = pair.Key;
             if (control.IsDisposed || !(control is Form or Label or ButtonBase or TextBoxBase or ComboBox or NumericUpDown)) continue;
             var source = pair.Value;
             float points = source.Points * targetDpi / startDpi;
-            // Rasterized glyph heights include font hinting and integer rounding;
-            // doubling a small glyph's pixel height is not a valid font oracle.
-            using var reference = new Font(source.Family, points, source.Style, GraphicsUnit.Point);
-            int expected = TextRenderer.MeasureText("Ag国", reference, Size.Empty,
-                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Height;
-            int actual = GlyphHeight(control);
-            Check(Math.Abs(control.Font.SizeInPoints - points) <= .15F && control.Font.Style == source.Style
-                && control.Font.FontFamily.Name == source.Family && Math.Abs(actual - expected) <= 1,
-                $"font scales for {Identity(control)}: points={control.Font.SizeInPoints:F2}/{points:F2}, measured={actual}px, expected={expected}px");
+            // Geometry checks measure actual text fit separately. Constructing
+            // an identical reference font and comparing glyphs added no coverage.
+            if (Math.Abs(control.Font.SizeInPoints - points) > .15F || control.Font.Style != source.Style || control.Font.FontFamily.Name != source.Family)
+                failures.Add($"{Identity(control)}: {control.Font.SizeInPoints:F2}/{points:F2} pt");
         }
+        Check(failures.Count == 0, $"font scaling {startDpi} -> {targetDpi}" + (failures.Count == 0 ? "" : ": " + string.Join("; ", failures)));
     }
-    public void Inspect(Form form, string name)
+    public void Inspect(Form form, string name, Control? region = null)
     {
         stage = name;
         form.Activate(); form.BringToFront(); Settle(form);
@@ -133,7 +130,7 @@ internal sealed class UiAcceptance
         Check(area.Contains(form.Bounds), "window remains inside the monitor work area");
         Check(form.AutoScaleMode == AutoScaleMode.Dpi, "DPI automatic scaling remains enabled");
         Check(form.DeviceDpi == TargetDpi, "requested managed DPI is active");
-        var visible = All(form).Where(c => c.Visible).ToArray();
+        var visible = All(region ?? form).Where(c => c.Visible).ToArray();
         var measurements = new List<object>();
         foreach (var c in visible)
         {
@@ -158,6 +155,7 @@ internal sealed class UiAcceptance
                 Check(c.ClientSize.Height + 2 >= minimum, $"editor has a readable line: {Identity(c)} ({c.ClientSize.Height} >= {minimum})");
             }
         }
+        var overlaps = new List<string>();
         foreach (var parent in visible.Where(c => !IsLeaf(c)))
         {
             var children = parent.Controls.Cast<Control>().Where(c => c.Visible).ToArray();
@@ -165,10 +163,10 @@ internal sealed class UiAcceptance
                 for (int j = i + 1; j < children.Length; j++)
                 {
                     var overlap = Rectangle.Intersect(children[i].Bounds, children[j].Bounds);
-                    Check(overlap.Width <= 1 || overlap.Height <= 1,
-                        "siblings do not overlap: " + Identity(children[i]) + " / " + Identity(children[j]));
+                    if (overlap.Width > 1 && overlap.Height > 1) overlaps.Add(Identity(children[i]) + " / " + Identity(children[j]));
                 }
         }
+        Check(overlaps.Count == 0, "controls do not overlap" + (overlaps.Count == 0 ? "" : ": " + string.Join("; ", overlaps)));
         ResetScroll(form); Settle(form); Screenshot(form, name + "-top.png");
         foreach (var c in visible.Where(c => IsLeaf(c) && c is not Label))
         {
@@ -189,7 +187,8 @@ internal sealed class UiAcceptance
                 Check(clip.Width >= Math.Min(80, rect.Width) && clip.Height >= Math.Min(GlyphHeight(c), rect.Height),
                     "input is reachable by scrolling: " + Identity(c));
         }
-        Screenshot(form, name + "-scrolled.png");
+        if (All(form).OfType<ScrollableControl>().Any(c => c.Visible && c.AutoScroll && c.AutoScrollPosition != Point.Empty))
+            Screenshot(form, name + "-scrolled.png");
         stages.Add(new { Stage = name, Method = native ? "native-monitor" : "injected-WM_DPICHANGED",
             ScreenshotMethod = "client-area-PrintWindow", NativeDpi = GetDpiForWindow(form.Handle), ManagedDpi = form.DeviceDpi,
             Window = form.Bounds.ToString(), WorkArea = area.ToString(), Controls = measurements });

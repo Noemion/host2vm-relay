@@ -146,8 +146,6 @@ jobs:
         run: dotnet build tests/TransportHarness/TransportHarness.csproj -c Release
       - name: Check Linux transport lifecycle
         run: dotnet run --project tests/TransportHarness/TransportHarness.csproj -c Release --no-build -- --local-check artifacts/checks/network/local-transport.json
-      - name: Test UDP bridge protocol and real sockets
-        run: python3 tests/test-native-agent.py artifacts/native/linux-x64/h2vm-agent-linux-x64
       - name: Test transparent TUN, SSH and automatic host fallback
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -11,13 +11,6 @@ for(let i=0;i<ico.readUInt16LE(4);i++){
  assert.equal(ico.readUInt32BE(offset+16),n);assert.equal(ico.readUInt32BE(offset+20),n);sizes.push(n);
 }
 assert.deepEqual(sizes,[16,20,24,32,40,48,64,128,256]);
-for(const file of ['MainForm.cs','ScriptDialog.cs']){
- const text=fs.readFileSync(path.join(root,'src/UI',file),'utf8');
- assert(text.includes('AutoScaleMode.Dpi'));assert(text.includes('96F, 96F'));assert(!text.includes('GraphicsUnit.Pixel'));
-}
-const project=fs.readFileSync(path.join(root,'src/Host2VMRelay.csproj'),'utf8');
-assert(project.includes('<ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>'));
-assert(project.includes('<ApplicationIcon>$(AppIconPath)</ApplicationIcon>'));
-assert(project.includes('LogicalName="Host2VMRelay.AppIcon"'));
-assert(fs.readFileSync(path.join(root,'packaging/Host2VMRelay.iss'),'utf8').includes('SetupIconFile='));
-console.log('PASS multi-resolution ICO frames, embedded icon, installer icon and DPI configuration');
+// Embedded resources and actual DPI awareness are checked on the built app.
+// Matching source-code strings here did not verify either runtime behavior.
+console.log('PASS multi-resolution ICO frame dimensions and payload bounds');

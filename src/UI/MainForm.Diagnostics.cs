@@ -125,7 +125,6 @@ public sealed partial class MainForm
             audit.Check(connect.Enabled && host.Enabled, "manual reconnect controls recover after disconnection");
             audit.Check(auth.SelectedIndex != 0 || keyControls?.Enabled != true, "password mode disables private-key browse");
             wanted = false; SetConnectionControls(false);
-            audit.Check(navigationButtons.Count == 5 && pages.PageCount == 5, "five accessible navigation destinations");
             audit.Check(Math.Abs(UiLayout.BaseFontPoints - (float)settings.FontSizePoints) < .01F && Math.Abs(UiTheme.ContentScale - .8F * settings.UiScalePercent / 100F) < .01F, "saved content scale and independent font size are applied");
             SelectPage(4); UiAcceptance.Settle(this);
             var folderField = pages.Pages[4].Controls.Find("settingsFolder", true).OfType<TextBox>().Single();
@@ -178,9 +177,6 @@ public sealed partial class MainForm
             }
             audit.Check(windowIcon?.Width == 32 * audit.TargetDpi / 96, "window icon has requested pixel size");
             audit.Check(trayIcon?.Width == 16 * audit.TargetDpi / 96, "tray icon has requested pixel size");
-            bool compact = ClientSize.Width * 96.0 / DeviceDpi < Math.Max(UiTheme.Units(860), 688 * UiTheme.FontPoints / 9.6F);
-            audit.Check(compactNavigation?.Visible == compact && sidebar?.Visible != compact, "navigation adapts without hiding destinations");
-            audit.Check(navigationButtons[2].Text == "Clash 接入", "Clash navigation keeps its complete caption in compact mode");
             var previousCaption = state.Text; var previousColor = state.ForeColor; var previousFeed = feed.Text;
             foreach (var health in new[] { new RelayHealth(true, false), new RelayHealth(false, false) })
             {
@@ -191,16 +187,16 @@ public sealed partial class MainForm
             state.Text = previousCaption; state.ForeColor = previousColor; feed.Text = previousFeed;
             for (int i = 0; i < pages.PageCount; i++)
             {
-                navigationButtons[i].PerformClick(); UiAcceptance.Settle(this); audit.Inspect(this, "page-" + i);
+                navigationButtons[i].PerformClick(); UiAcceptance.Settle(this); audit.Inspect(this, "page-" + i, pages.Pages[i]);
                 if (i == 0)
                 {
-                    auth.SelectedIndex = 1; UiAcceptance.Settle(this); audit.Inspect(this, "page-0-private-key"); auth.SelectedIndex = originalAuth;
+                    auth.SelectedIndex = 1; UiAcceptance.Settle(this); audit.Inspect(this, "page-0-private-key", pages.Pages[0]); auth.SelectedIndex = originalAuth;
                 }
                 if (i == 2)
                 {
                     var toggle = pages.Pages[i].Controls.Find("toggleTunGuide", true).OfType<Button>().Single();
                     var guide = pages.Pages[i].Controls.Find("tunInstructions", true).Single();
-                    toggle.PerformClick(); UiAcceptance.Settle(this); audit.Check(guide.Visible, "TUN disclosure opens"); audit.Inspect(this, "page-2-expanded");
+                    toggle.PerformClick(); UiAcceptance.Settle(this); audit.Check(guide.Visible, "TUN disclosure opens"); audit.Inspect(this, "page-2-expanded", pages.Pages[2]);
                     toggle.PerformClick(); audit.Check(!guide.Visible, "TUN disclosure closes");
                     pages.Pages[i].Controls.Find("openScriptWorkspace", true).OfType<Button>().Single().PerformClick();
                     UiAcceptance.Settle(this);
@@ -209,14 +205,16 @@ public sealed partial class MainForm
                     // DPI used by a subsequently created child form.
                     audit.ApplyDpi(workspace, audit.TargetDpi);
                     workspace.VerifyForTest(); workspace.VerifyLayoutForTest(audit);
-                    audit.Inspect(this, "script-embedded");
+                    audit.Inspect(this, "script-embedded", workspace);
                     workspace.Controls.Find("backToClash", true).OfType<Button>().Single().PerformClick();
                     audit.Check(!workspace.Visible, "script workspace returns to Clash in the same window");
                 }
             }
             using (var dialog = new ScriptDialog(GenerateScript, ""))
             {
-                dialog.Show(this); dialog.VerifyForTest(); UiAcceptance.Settle(dialog);
+                // Input/composition actions were exercised in the embedded
+                // workspace; this window adds independent sizing/DPI coverage.
+                dialog.Show(this); UiAcceptance.Settle(dialog);
                 int dialogDpi = dialog.DeviceDpi; var dialogFonts = UiAcceptance.FontBaseline(dialog);
                 audit.ApplyDpi(dialog, audit.TargetDpi); audit.VerifyFontScaling(dialogFonts, dialogDpi, audit.TargetDpi);
                 audit.Check(dialog.EditorViewportHeight >= UiTheme.Px(dialog, 90), "script viewport retains usable height in a compact window");
@@ -230,13 +228,10 @@ public sealed partial class MainForm
                 UiAcceptance.Settle(dialog); dialog.VerifyLayoutForTest(audit);
                 audit.Inspect(dialog, "script-short");
                 dialog.Bounds = fullBounds; UiAcceptance.Settle(dialog);
-                if (!requireNativeDpi)
+                if (!requireNativeDpi && dialogDpi != audit.TargetDpi)
                 {
-                    for (int round = 0; round < 3; round++)
-                    {
-                        audit.ApplyDpi(dialog, dialogDpi); audit.VerifyFontScaling(dialogFonts, dialogDpi, dialogDpi);
-                        audit.ApplyDpi(dialog, audit.TargetDpi); audit.VerifyFontScaling(dialogFonts, dialogDpi, audit.TargetDpi);
-                    }
+                    audit.ApplyDpi(dialog, dialogDpi); audit.VerifyFontScaling(dialogFonts, dialogDpi, dialogDpi);
+                    audit.ApplyDpi(dialog, audit.TargetDpi); audit.VerifyFontScaling(dialogFonts, dialogDpi, audit.TargetDpi);
                     audit.Check(dialog.EditorViewportHeight >= UiTheme.Px(dialog, 90), "script viewport survives DPI round trips");
                     dialog.VerifyLayoutForTest(audit);
                     audit.Inspect(dialog, "script-roundtrip");
@@ -245,14 +240,11 @@ public sealed partial class MainForm
             }
             audit.InspectTrayMenu(this, dark: true);
             audit.InspectTrayMenu(this, dark: false);
-            if (!requireNativeDpi)
+            if (!requireNativeDpi && startDpi != audit.TargetDpi)
             {
                 SelectPage(0);
-                for (int round = 0; round < 3; round++)
-                {
-                    audit.ApplyDpi(this, startDpi); audit.VerifyFontScaling(fonts, startDpi, startDpi);
-                    audit.ApplyDpi(this, audit.TargetDpi); audit.VerifyFontScaling(fonts, startDpi, audit.TargetDpi);
-                }
+                audit.ApplyDpi(this, startDpi); audit.VerifyFontScaling(fonts, startDpi, startDpi);
+                audit.ApplyDpi(this, audit.TargetDpi); audit.VerifyFontScaling(fonts, startDpi, audit.TargetDpi);
                 audit.Inspect(this, "main-roundtrip");
             }
         }

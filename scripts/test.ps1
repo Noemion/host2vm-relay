@@ -27,7 +27,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Incremental script upgrade tests failed.' }
 & node (Join-Path $repoRoot 'tests\test-setup-icon.cjs') (Join-Path $repoRoot 'artifacts\assets\Host2VMRelay.Setup.ico')
 if ($LASTEXITCODE -ne 0) { throw 'Setup icon format tests failed.' }
 & node (Join-Path $repoRoot 'tests\test-assets.cjs')
-if ($LASTEXITCODE -ne 0) { throw 'Icon and DPI configuration checks failed.' }
+if ($LASTEXITCODE -ne 0) { throw 'Application icon asset checks failed.' }
 if ($Smoke) {
     # Observe first navigation without the repeated layout passes used by the
     # screenshot audit. Include the larger saved appearance settings.
