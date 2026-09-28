@@ -6,7 +6,6 @@ var
   Preparing: Boolean;
   PreviousFiles: TStringList;
   PreviousVersionRemoved: Boolean;
-  PreviousUninstaller: String;
   InstallActions: TNewMemo;
   UpgradeLogPath: String;
   UpgradeLogLines: Integer;
@@ -199,7 +198,9 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  if CurPageID = wpInstalling then
+  if CurPageID = wpReady then
+    ShowInstallationConfirmation
+  else if CurPageID = wpInstalling then
   begin
     ProgressActive := True;
     // Preserve the total and operation history across the native page change.
@@ -256,8 +257,6 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var
-  UninstallString, PreviousVersion: String;
 begin
   Result := '';
   ProgressActive := True;
@@ -277,21 +276,8 @@ begin
     ReportProgress(30);
     RecordAction(CustomMessage('ActionDetect'));
     InstallationProgressBase := 250;
-    PreviousUninstaller := '';
-    if RegQueryStringValue(HKCU, '{#UninstallRegistryKey}', 'UninstallString', UninstallString) then
-    begin
-      // Our registration contains a quoted executable, never a shell command.
-      PreviousUninstaller := RemoveQuotes(UninstallString);
-      if RegQueryStringValue(HKCU, '{#UninstallRegistryKey}', 'DisplayVersion', PreviousVersion) then
-      begin
-        if PreviousVersion = '{#AppVersion}' then
-          SetVersion(FmtMessage(CustomMessage('ReinstallVersion'), ['{#AppVersion}']))
-        else
-          SetVersion(PreviousVersion + '  →  {#AppVersion}');
-      end;
-    end
-    else
-      SetVersion(CustomMessage('FreshVersion') + ' {#AppVersion}');
+    DetectInstallation;
+    SetVersion(InstallationSummary);
     // Returning lets the native Preparing page ask to close running apps.
     // Removing the old version here would run before Restart Manager shutdown.
   finally
@@ -314,9 +300,9 @@ begin
     RaiseException(CustomMessage('ApplicationStillRunning'));
   if PreviousUninstaller <> '' then
   begin
-    SetPhase(CustomMessage('UpgradeRemoving'));
+    SetPhase(FmtMessage(CustomMessage('PreparingOperation'), [CustomMessage(InstallationOperation)]));
     ReportProgress(50);
-    RecordAction(CustomMessage('UpgradeRemoving'));
+    RecordAction(PhaseText);
     UpgradeLogPath := ExpandConstant('{tmp}\previous-version-uninstall.log');
     DeleteFile(UpgradeLogPath);
     UpgradeLogLines := 0;
@@ -345,7 +331,7 @@ begin
       ReadUpgradeLog;
     end;
   end
-  else
+  else if InstallationOperation = 'OperationNew' then
     RecordAction(CustomMessage('ActionFresh'));
   PreviousVersionRemoved := True;
   ReportProgress(250);
@@ -370,10 +356,6 @@ end;
 // User configuration and its location pointer are intentionally retained.
 
 [CustomMessages]
-zhcn.ReinstallVersion=重新安装 %1
-en.ReinstallVersion=Reinstall %1
-zhcn.FreshVersion=首次安装
-en.FreshVersion=New installation
 zhcn.TotalProgress=总进度：
 en.TotalProgress=Overall progress:
 zhcn.ActionPrerequisites=正在检查安装条件。
@@ -387,19 +369,19 @@ en.ActionWritten=File processed:
 en.ActionShortcut=Creating shortcut:
 en.ActionCommand=Executing command:
 zhcn.ActionDetect=正在检测已有版本。
-zhcn.ActionPrepared=版本升级准备完成，现有配置已保留。
+zhcn.ActionPrepared=已有版本处理完成，现有配置已保留。
 zhcn.ActionFresh=未检测到已有版本，将进行首次安装。
 zhcn.ActionInstall=正在安装文件和创建快捷方式。
 zhcn.ActionComplete=安装完成。
 en.ActionDetect=Checking for an existing version.
-en.ActionPrepared=Upgrade preparation complete. Existing settings have been retained.
+en.ActionPrepared=Previous version removed. Existing settings have been retained.
 en.ActionFresh=No existing version found. Starting a new installation.
 en.ActionInstall=Installing files and creating shortcuts.
 en.ActionComplete=Installation complete.
-zhcn.UpgradeRemoving=正在升级版本……
+zhcn.PreparingOperation=正在准备%1……
 zhcn.UpgradeLaunchFailed=无法启动旧版本卸载程序：%1。请处理后重试。
 zhcn.UpgradeRemoveFailed=旧版本卸载失败（退出代码：%1）。安装已停止，请处理后重试。
-en.UpgradeRemoving=Upgrading to the new version...
+en.PreparingOperation=Preparing to %1...
 en.UpgradeLaunchFailed=Could not start the previous version's uninstaller: %1. Resolve the problem and retry.
 en.UpgradeRemoveFailed=The previous version could not be removed (exit code: %1). Installation has stopped. Resolve the problem and retry.
 

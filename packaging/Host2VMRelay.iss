@@ -5,7 +5,7 @@
   #define OutputRoot "..\artifacts\release"
 #endif
 #ifndef AppVersion
-  #define AppVersion "0.6.11"
+  #define AppVersion "0.6.12"
 #endif
 #ifndef AppArch
   #define AppArch "x64"
@@ -19,7 +19,10 @@ AppPublisher=Host2VMRelay contributors
 AppComments=Selective host-to-VM forwarding through SSH and Clash TUN
 DefaultDirName={localappdata}\Programs\Host2VMRelay
 DefaultGroupName=Host2VMRelay
-DisableProgramGroupPage=yes
+DisableWelcomePage=no
+DisableDirPage=no
+DisableProgramGroupPage=no
+DisableReadyPage=no
 PrivilegesRequired=lowest
 MinVersion=10.0.14393
 SetupArchitecture=x86
@@ -78,4 +81,5 @@ Filename: "{app}\Host2VMRelay.exe"; Description: "{cm:LaunchProgram,Host2VMRelay
 
 #define UninstallRegistryKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{B49F96CE-C602-4C52-A415-61A77A0B4BE7}_is1"
 #include "RuntimeRequirement.iss"
+#include "InstallerSummary.iss"
 #include "InstallerFlow.iss"
