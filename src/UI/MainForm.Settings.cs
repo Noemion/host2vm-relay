@@ -85,7 +85,7 @@ public sealed partial class MainForm
             UiLayout.Pair(UiLayout.Field("自动重连间隔（秒）", reconnectDelay), UiLayout.Field("并发连接上限", connectionLimit)),
             UiLayout.Help("默认 512，范围 64～2048。TCP 连接与 UDP 关联共用名额；达到上限时拒绝新请求。内存或虚拟机资源有限时可调低，下次连接生效。"),
             UiLayout.Actions(saveBehavior), behaviorStatus));
-        UiLayout.Add(page, UiLayout.Help("配置目录定位文件仅保存路径，位于 LocalAppData/Host2VMRelay/storage.json。Clash 的规则文件仍位于 Clash 数据目录，不随本配置迁移。"));
+        UiLayout.Add(page, UiLayout.Help("设置保存在上方显示的当前配置目录，可通过“更改目录”迁移。Clash 规则文件由 Clash 单独管理，不随本配置迁移。"));
         bool CanMoveProfile()
         {
             if (!busy && !wanted && session?.IsConnected != true) return true;

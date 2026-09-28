@@ -51,10 +51,14 @@ internal static class UiLayout
     }
     public static ActionButton Button(string text, int minimumWidth = 100) => new() { Text = text, AccessibleName = text, MinimumSize = UiTheme.Size(minimumWidth, 42) };
     public static ActionButton Primary(string text, int minimumWidth = 140) { var button = Button(text, minimumWidth); button.Primary = true; return button; }
+    // TableLayoutPanel measures an auto-sized, top-docked label against its
+    // current column width. Do not set MaximumSize from a Layout event: column
+    // widths can still describe the hidden page's previous layout, trapping
+    // text in a narrow column and retaining an oversized card on first display.
     public static Label Help(string text) => new()
     {
         Text = text, AutoSize = true, Dock = DockStyle.Top, ForeColor = UiTheme.Muted,
-        MaximumSize = UiTheme.Size(760, 0), Margin = UiTheme.Spacing(0, 3, 0, 10)
+        Margin = UiTheme.Spacing(0, 3, 0, 10)
     };
     public static Label Heading(string text, float points = 14)
     {
@@ -65,7 +69,7 @@ internal static class UiLayout
     public static TableLayoutPanel Stack()
     {
         var table = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Margin = Padding.Empty };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); WrapLabels(table); return table;
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); return table;
     }
     public static void Add(TableLayoutPanel table, Control control)
     {
@@ -77,7 +81,7 @@ internal static class UiLayout
         var card = new CardPanel { AccessibleName = title, AccessibleRole = AccessibleRole.Grouping };
         Add(card, Heading(title)); if (description.Length > 0) Add(card, Help(description));
         foreach (var control in controls) Add(card, control);
-        WrapLabels(card); return card;
+        return card;
     }
     public static TableLayoutPanel Field(string title, Control control, string? hint = null, bool frame = true)
     {
@@ -105,26 +109,6 @@ internal static class UiLayout
         editor.WordWrap = false; editor.ScrollBars = ScrollBars.Both; editor.Font = CodeFont();
         editor.MinimumSize = UiTheme.Size(0, 96); editor.HideSelection = false;
         return new EntryFrame(editor, true, height);
-    }
-    public static void WrapLabels(TableLayoutPanel table)
-    {
-        bool updating = false;
-        table.Layout += (_, _) =>
-        {
-            if (updating) return; updating = true;
-            try
-            {
-                int[] widths = table.GetColumnWidths();
-                foreach (Control control in table.Controls)
-                {
-                    if (control is not Label label || !label.AutoSize || label.Dock != DockStyle.Top) continue;
-                    int column = table.GetColumn(label); if (column < 0 || column >= widths.Length) continue;
-                    int width = widths.Skip(column).Take(table.GetColumnSpan(label)).Sum() - label.Margin.Horizontal;
-                    if (width > 30 && label.MaximumSize.Width != width) label.MaximumSize = new Size(width, 0);
-                }
-            }
-            finally { updating = false; }
-        };
     }
     public static void FitToScreen(Form form, Size logicalMinimum)
     {

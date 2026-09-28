@@ -69,6 +69,16 @@ public sealed partial class MainForm
         };
         void Observe(string stage)
         {
+            // Inspect the natural first layout. The full screenshot audit calls
+            // PerformLayout repeatedly and can hide stale label-width caches.
+            foreach (var label in pagePaints.Keys.OfType<Label>().Where(c => c.Visible && c.AutoSize && c.Dock == DockStyle.Top))
+            {
+                if (label.Parent is not TableLayoutPanel table) continue;
+                int column = table.GetColumn(label);
+                int available = table.GetColumnWidths().Skip(column).Take(table.GetColumnSpan(label)).Sum() - label.Margin.Horizontal;
+                if (available > 30 && label.Width + 2 < available)
+                    failures.Add($"{stage}: label leaves unused column width: {label.Text}; {label.Width}/{available}");
+            }
             painted = navigationButtons.Sum(b => b.PaintCount);
             bool compact = navigation?.Parent == compactNavigation;
             int expected = compact ? 0 : UiTheme.Px(this, 204);

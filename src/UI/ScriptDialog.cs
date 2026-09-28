@@ -80,7 +80,7 @@ internal sealed class ScriptDialog : Form
         root.Controls.Add(actions, 0, 3);
         status.Margin = UiTheme.Spacing(0, 8, 0, 0); root.Controls.Add(status, 0, 4);
         root.Controls.Add(UiLayout.Help("使脚本生效：" + ClashActivationGuide.Steps), 0, 5);
-        UiLayout.WrapLabels(root); workspaceScroll.Controls.Add(root); Controls.Add(workspaceScroll);
+        workspaceScroll.Controls.Add(root); Controls.Add(workspaceScroll);
         // Empty input generates a fresh script; existing input is inspected and
         // merged automatically, without a separate mode that can discard it.
         source.Text = WindowsLines(existingScript);

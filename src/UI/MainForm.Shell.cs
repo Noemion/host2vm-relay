@@ -48,9 +48,9 @@ public sealed partial class MainForm
         pageDescription = UiLayout.Help(PageDescriptions[0]); pageDescription.Name = "pageDescription";
         state.Anchor = AnchorStyles.Top | AnchorStyles.Right; state.Margin = UiTheme.Spacing(12, 6, 0, 0);
         header.Controls.Add(pageTitle, 0, 0); header.Controls.Add(state, 1, 0);
-        header.Controls.Add(pageDescription, 0, 1); header.SetColumnSpan(pageDescription, 2); UiLayout.WrapLabels(header);
+        header.Controls.Add(pageDescription, 0, 1); header.SetColumnSpan(pageDescription, 2);
         contentArea.Controls.Add(header, 0, 0); contentArea.Controls.Add(pages, 0, 1);
-        feed.Margin = UiTheme.Spacing(0, 10, 0, 0); contentArea.Controls.Add(feed, 0, 2); UiLayout.WrapLabels(contentArea);
+        feed.Margin = UiTheme.Spacing(0, 10, 0, 0); contentArea.Controls.Add(feed, 0, 2);
         shellBody.Controls.Add(sidebar, 0, 0); shellBody.Controls.Add(contentArea, 1, 0);
         outer.Controls.Add(compactNavigation, 0, 0); outer.Controls.Add(shellBody, 0, 1); Controls.Add(outer);
         pages.SelectedIndexChanged += (_, _) => RefreshNavigation(); SizeChanged += (_, _) => UpdateShellLayout();
