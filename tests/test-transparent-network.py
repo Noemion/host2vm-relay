@@ -47,8 +47,8 @@ def record(name, detail=''):
     print('PASS ' + name, flush=True)
 
 
-def client(kind, host='198.19.0.2', value='test'):
-    result = run('ip', 'netns', 'exec', CLIENT, sys.executable, ROOT / 'tests/network-client.py',
+def client(kind, host='198.19.0.2', value='test', executable=sys.executable):
+    result = run('ip', 'netns', 'exec', CLIENT, executable, ROOT / 'tests/network-client.py',
                  kind, host, 18080 if kind == 'tcp' else 18081, value, check=False)
     return result.stdout.strip() if result.returncode == 0 else 'ERROR'
 
@@ -149,6 +149,16 @@ def tests():
     (OUT / 'routes.txt').write_text(run('ip', '-n', CLIENT, 'route', 'show', 'table', 'all').stdout + run('ip', '-n', CLIENT, 'rule', 'show').stdout)
     expect_path('udp', 'VM:probe', timeout=40); expect_path('tcp', 'VM')
     record('original IP/port TCP and UDP clients transparently use VM through TUN')
+    # Linux-only disposable fixture: a separate interpreter named like VMware's
+    # NAT process owns real sockets. Exercise Mihomo's actual process lookup,
+    # rather than mocking rule matching or modifying a live VMware service.
+    nat_client = TMP / 'vmnat.exe'
+    shutil.copy2(sys.executable, nat_client)
+    for host in ['198.19.0.2', 'shared.h2vm.test']:
+        assert client('tcp', host, executable=nat_client) == 'HOST'
+        assert client('udp', host, value='nat', executable=nat_client) == 'HOST:nat'
+    expect_path('tcp', 'VM'); expect_path('udp', 'VM:probe')
+    record('VMware NAT process uses original policy for TCP/UDP and fake-IP names while host clients still use VM')
     expect_path('udp', 'PRIVATE:probe', host='198.19.0.3'); expect_path('tcp', 'PRIVATE', host='198.19.0.3')
     record('VM-only address is reachable without changing the client or address')
     expect_path('udp', 'PRIVATE:probe', host='intranet.h2vm.test'); expect_path('tcp', 'PRIVATE', host='intranet.h2vm.test')

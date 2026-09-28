@@ -19,7 +19,7 @@ for (const name of ['fresh', 'updated', 'v040Updated', 'v1Updated', 'v1UserEdite
   assert.equal(result.proxies.find(p=>p.name==='Host2VMRelay').port,name==='fresh'?1080:1081);
   assert.equal(result.proxies.find(p=>p.name==='public-mieru').udp,true);
   assert.equal(result.proxies.find(p=>p.name==='Host2VMRelay').udp,true,'Advertise the implemented UDP ASSOCIATE endpoint');
-  assert.equal(result.rules.filter(r=>r==='AND,((NETWORK,tcp),(RULE-SET,host2vm-relay-rules)),Host2VMRelay-TCP').length,1);
+  assert.equal(result.rules.filter(r=>r.startsWith('AND,((NETWORK,tcp),(RULE-SET,host2vm-relay-rules),') && r.endsWith(',Host2VMRelay-TCP')).length,1);
   for (const kind of ['TCP','UDP']) {
     const group=result['proxy-groups'].find(g=>g.name==='Host2VMRelay-'+kind);
     assert.equal(JSON.stringify(group.proxies),JSON.stringify(['PASS','Host2VMRelay']));

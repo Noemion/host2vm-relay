@@ -28,6 +28,25 @@ for (const mode of ['blacklist', 'whitelist', 'rule']) {
   for (const group of again['proxy-groups']) assert.deepEqual(Array.from(group.proxies), ['PASS','Host2VMRelay']);
 }
 let result = execute(scripts.merge, base());
+for (const mode of [undefined, 'off', 'strict', 'always']) {
+  const input = base();
+  if (mode !== undefined) input['find-process-mode'] = mode;
+  const output = execute(scripts.empty, input);
+  assert.equal(output['find-process-mode'], mode === 'off' ? 'strict' : mode);
+  for (const protocol of ['tcp', 'udp']) {
+    const rule = output.rules.find(r => r.startsWith('AND,((NETWORK,' + protocol + ')'));
+    assert(rule.includes('(NOT,((PROCESS-NAME,vmnat.exe)))'));
+    assert(rule.includes('(NOT,((SRC-IP-CIDR,192.168.229.10/32)))'));
+  }
+  assert(!output.rules.some(r => r.startsWith('PROCESS-NAME,vmnat.exe,')), 'NAT exclusion must preserve the original routing policy');
+}
+assert(execute(scripts.regenerated, base()).rules.some(r => r.includes('(NOT,((SRC-IP-CIDR,fd00::8/128)))')));
+const previous = base();
+const unguarded = 'AND,((NETWORK,tcp),(RULE-SET,host2vm-relay-rules)),Host2VMRelay-TCP';
+previous.rules.unshift(unguarded);
+const migrated = execute(scripts.empty, previous);
+assert(!migrated.rules.includes(unguarded), 'Replace unguarded rules from older versions');
+assert.equal(migrated.rules.length, 5);
 assert.equal(result.label, '中文 😀 __SOCKS_PORT__:kept'); assert.equal(result.profile, 'test');
 assert(result.rules.includes('DOMAIN,user.example,DIRECT'));
 assert(execute(scripts.arrow, base()).arrow); assert(execute(scripts.mutating, base()).mutated);

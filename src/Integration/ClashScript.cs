@@ -70,11 +70,19 @@ function main(config, profileName) {
     type: "file", behavior: "classical", format: "text",
     path: "./rules/host2vm-relay-udp-rules.txt", interval: 3
   };
+  // VMware NAT opens host sockets on behalf of the guest. Sending those sockets
+  // back through the guest creates a loop (including the guest's VPN login).
+  // Exclude them from OUR rules, leaving the user's original routing in charge.
+  // The source guard also covers guest traffic whose source survives routing.
+  const hostTraffic = "(NOT,((PROCESS-NAME,vmnat.exe))),(NOT,((SRC-IP-CIDR,__VM_CIDR__)))";
+  // Strict mode performs process lookup only when a process rule needs it.
+  // With lookup disabled the NAT guard cannot identify guest-owned sockets.
+  if (config["find-process-mode"] === "off") config["find-process-mode"] = "strict";
   const first = [
     "__VM_RULE_TYPE__,__VM_CIDR__,DIRECT,no-resolve",
     "IP-CIDR,127.0.0.0/8,DIRECT,no-resolve",
-    "AND,((NETWORK,tcp),(RULE-SET," + provider + "))," + tcpGroup,
-    "AND,((NETWORK,udp),(RULE-SET," + udpProvider + "))," + udpGroup
+    "AND,((NETWORK,tcp),(RULE-SET," + provider + ")," + hostTraffic + ")," + tcpGroup,
+    "AND,((NETWORK,udp),(RULE-SET," + udpProvider + ")," + hostTraffic + ")," + udpGroup
   ];
   const ownedRule = r => [node, oldNode, tcpGroup, udpGroup].some(n => r.endsWith("," + n) || r.endsWith("," + n + ",no-resolve"));
   config.rules = [...first, ...(config.rules ?? []).filter(r => !first.includes(r) && !ownedRule(r))];
