@@ -1,32 +1,20 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
-using System.Text.Json;
 
 namespace Host2VMRelay;
 
 public static class ClashScript
 {
-    public static string Generate(int port, string host = "192.168.229.10", string? existingScript = null, string? vpnGatewayDomains = null)
+    public static string Generate(int port, string host = "192.168.229.10", string? existingScript = null)
     {
         if (port is < 1 or > 65535) throw new ArgumentOutOfRangeException(nameof(port), "SOCKS5 端口必须为 1–65535。");
         if (!IPAddress.TryParse(host, out var address)) throw new ArgumentException("虚拟机地址请填写 IPv4 或 IPv6，以便生成准确的 TUN 绕过规则。");
         string cidr = address + (address.AddressFamily == AddressFamily.InterNetwork ? "/32" : "/128");
         string relay = Template.Replace("__SOCKS_PORT__", port.ToString(CultureInfo.InvariantCulture))
-            .Replace("__VPN_GATEWAYS__", JsonSerializer.Serialize(ParseVpnGateways(vpnGatewayDomains)))
             .Replace("__VM_CIDR__", cidr)
             .Replace("__VM_RULE_TYPE__", address.AddressFamily == AddressFamily.InterNetwork ? "IP-CIDR" : "IP-CIDR6");
         return ScriptComposer.Compose(existingScript, relay);
-    }
-
-    internal static string[] ParseVpnGateways(string? input)
-    {
-        if (string.IsNullOrWhiteSpace(input)) return [];
-        string[] rules = Rules.Compile(input).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(rule => !rule.StartsWith('#')).ToArray();
-        if (rules.Length > 64 || rules.Any(rule => !rule.StartsWith("DOMAIN,", StringComparison.Ordinal)))
-            throw new ArgumentException("VPN 网关请每行填写一个精确域名，不填写 IP、通配符、端口或网址；最多 64 个。");
-        return rules.Select(rule => rule["DOMAIN,".Length..]).ToArray();
     }
 
     private const string Template = """
@@ -53,7 +41,6 @@ function main(config, profileName) {
     if (proxy.type === "mieru") proxy.udp = true;
   }
   const node = "Host2VMRelay", oldNode = "Host2VM Relay";
-  const vpnGateways = __VPN_GATEWAYS__;
   const provider = "host2vm-relay-rules";
   config.proxies = [
     ...(config.proxies ?? []).filter(p => p.name !== node && p.name !== oldNode),
@@ -121,10 +108,11 @@ function main(config, profileName) {
   dns.enable = true;
   dns["enhanced-mode"] = "fake-ip";
   dns["fake-ip-filter-mode"] = "rule";
-  // A VPN login gateway may share the suffix of internal destinations. It
-  // must resolve before entering the VPN, even when the suffix uses fake IP.
-  const gatewayFilters = vpnGateways.map(domain => "DOMAIN," + domain + ",real-ip");
-  dns["fake-ip-filter"] = [...gatewayFilters, priority, ...filters.filter(rule => !gatewayFilters.includes(rule))];
+  // Explicit real-IP domain exceptions belong to the user's Clash config.
+  // Keep them ahead of our broad relay rule-set (e.g. a VPN login gateway
+  // sharing an internal suffix). Bulk geosite/rule-set defaults stay behind.
+  const exactRealIp = rule => /^DOMAIN,[^,]+,real-ip$/.test(rule);
+  dns["fake-ip-filter"] = [...filters.filter(exactRealIp), priority, ...filters.filter(rule => !exactRealIp(rule))];
   if (config.tun != null || Object.keys(savedTun).length > 0) {
     const tun = config.tun = config.tun ?? {};
     if (typeof tun !== "object" || Array.isArray(tun)) throw new Error("TUN 配置必须为对象，请检查原有扩展脚本。");

@@ -119,20 +119,6 @@ public sealed partial class MainForm
     private void BuildClash()
     {
         var page = PageContent("Clash 接入");
-        var gateways = new TextBox { Text = settings.VpnGatewayDomains, Name = "vpnGatewayDomains", Multiline = true, Height = UiTheme.Units(60), ScrollBars = ScrollBars.Vertical };
-        var saveGateways = UiLayout.Button("保存网关例外", 170);
-        var gatewayResult = UiLayout.Help("可选，每行一个 VPN 登录网关域名，如 vpn.example.com。不要填写普通内网站点。保存后重新生成并应用扩展脚本。");
-        saveGateways.Click += (_, _) =>
-        {
-            try
-            {
-                string normalized = string.Join("\n", ClashScript.ParseVpnGateways(gateways.Text));
-                settings = settings.SaveUpdated(candidate => candidate.VpnGatewayDomains = normalized);
-                gateways.Text = normalized;
-                gatewayResult.Text = "已保存，尚未应用到 Clash。请重新生成并应用扩展脚本，让网关优先返回真实 IP。";
-            }
-            catch (Exception ex) { gatewayResult.Text = ex.Message; }
-        };
         var quickCopy = UiLayout.Primary("生成并复制", 150); var mergeScript = UiLayout.Button("合并已有脚本", 170);
         mergeScript.Name = "openScriptWorkspace";
         var scriptFeedback = UiLayout.Help("");
@@ -164,8 +150,6 @@ public sealed partial class MainForm
         UiLayout.Add(page, UiLayout.Card("01  生成扩展脚本", "没有自定义脚本时直接生成；也可粘贴旧版完整脚本，只更新托管区并保留自定义逻辑。将完整结果粘贴到当前订阅的“编辑扩展脚本”，保存并应用。", UiLayout.Actions(quickCopy, mergeScript), scriptFeedback));
         UiLayout.Add(page, UiLayout.Card("使脚本生效", ClashActivationGuide.Steps));
         UiLayout.Add(page, BuildClashRuleStatus());
-        UiLayout.Add(page, UiLayout.Card("VPN 网关 DNS 例外", "宽泛的内网域名规则可能同时包含 VPN 网关。网关必须在 VPN 建立前可达；此处仅为指定域名关闭 Fake-IP。",
-            gateways, UiLayout.Actions(saveGateways), gatewayResult));
         var tunDetails = UiLayout.Stack(); tunDetails.Name = "tunInstructions";
         UiLayout.Add(tunDetails, UiLayout.Help("模式：规则模式\n虚拟网卡：开启 TUN 与自动路由\nDNS 劫持：any:53、tcp://any:53\n路由排除：虚拟机 IPv4/32，或 IPv6/128"));
         UiLayout.Add(tunDetails, UiLayout.Help("不要排除需要转发的目标 IP。TUN 界面字段由 Clash 管理，扩展脚本不会覆盖这些字段。Fake-IP 规则需要支持 fake-ip-filter-mode: rule 的 Mihomo 内核。"));
@@ -244,7 +228,7 @@ public sealed partial class MainForm
     }
     private string GenerateScript(string? existing)
     {
-        string result = ClashScript.Generate((int)socksPort.Value, host.Text.Trim(), existing, settings.VpnGatewayDomains);
+        string result = ClashScript.Generate((int)socksPort.Value, host.Text.Trim(), existing);
         ApplyRouteFiles(); Log("完整 Clash 扩展脚本已生成。"); return result;
     }
 }

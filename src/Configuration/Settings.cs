@@ -18,7 +18,6 @@ public sealed class Settings
     public bool EnableUdp { get; set; } = true;
     public string Rules { get; set; } = "# 每行填写一个域名、IP 或网段";
     public string TestUrl { get; set; } = "https://example.com/";
-    public string VpnGatewayDomains { get; set; } = "";
     public int UiScalePercent { get; set; } = 100;
     public decimal FontSizePoints { get; set; } = 9m;
     public bool ShowConnectionNotifications { get; set; } = true;

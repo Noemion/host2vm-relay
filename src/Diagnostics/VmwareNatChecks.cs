@@ -4,13 +4,6 @@ internal static class VmwareNatChecks
 {
     public static void Run(string output, Action<bool, string> check)
     {
-        check(ClashScript.ParseVpnGateways("# optional").Length == 0, "comment-only gateway list is empty");
-        foreach (string invalid in new[] { "*.example.com", "10.1.2.3", "https://vpn.example.com", "vpn.example.com:443" })
-        {
-            bool rejected = false;
-            try { ClashScript.ParseVpnGateways(invalid); } catch (Exception ex) when (ex is ArgumentException or FormatException) { rejected = true; }
-            check(rejected, "gateway exception accepts only exact domain names");
-        }
         const string nat = "ethernet0.connectionType = \"nat\"\r\n";
         const string setting = "vmnat.linkStatePropagation.disable = \"FALSE\"";
         string before = "# " + setting + "\r\n" + nat + setting + " # keep comment\r\n";

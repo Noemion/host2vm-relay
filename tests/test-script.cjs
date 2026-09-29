@@ -14,10 +14,12 @@ assert(fixture && fs.existsSync(fixture), 'Run the C# self-test to create script
 const scripts = JSON.parse(fs.readFileSync(fixture, 'utf8'));
 {
   const input = base();
-  const result = execute(scripts['vpn-gateway'], input);
+  input.dns = {'fake-ip-filter-mode': 'rule', 'fake-ip-filter': ['DOMAIN,vpn.example.com,real-ip', 'RULE-SET,cn,real-ip', 'MATCH,fake-ip']};
+  const result = execute(scripts.empty, input);
   assert.deepEqual(Array.from(result.dns['fake-ip-filter'].slice(0, 2)),
     ['DOMAIN,vpn.example.com,real-ip', 'RULE-SET,host2vm-relay-rules,fake-ip']);
-  assert.deepEqual(JSON.parse(JSON.stringify(execute(scripts['vpn-gateway'], result))), JSON.parse(JSON.stringify(result)));
+  assert.deepEqual(JSON.parse(JSON.stringify(execute(scripts.empty, result))), JSON.parse(JSON.stringify(result)));
+  assert(result.dns['fake-ip-filter'].indexOf('RULE-SET,cn,real-ip') > result.dns['fake-ip-filter'].indexOf('RULE-SET,host2vm-relay-rules,fake-ip'));
   assert(result.rules.some(r => r.includes('NOT,((PROCESS-NAME,vmnat.exe))')));
   console.log('PASS VPN gateway real DNS precedes suffix forwarding; NAT guard and repeated application preserved');
 }
@@ -28,7 +30,7 @@ for (const mode of ['blacklist', 'whitelist', 'rule']) {
   assert.equal(result.proxies[0].udp, true);
   assert.equal(result.proxies.length, 2);
   assert.equal(result.rules.at(-1), 'MATCH,DIRECT');
-  assert.equal(result.dns['fake-ip-filter'][0], 'RULE-SET,host2vm-relay-rules,fake-ip');
+  assert.equal(result.dns['fake-ip-filter'][mode === 'whitelist' ? 0 : 1], 'RULE-SET,host2vm-relay-rules,fake-ip');
   assert(result.dns['fake-ip-filter'].some(r => r.includes(mode === 'rule' ? 'old.example' : 'exact.example')));
   const again = execute(scripts.empty, result);
   assert.equal(again.proxies.length, 2); assert.equal(again.rules.length, 5);
