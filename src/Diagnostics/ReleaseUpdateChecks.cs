@@ -39,10 +39,69 @@ internal static class ReleaseUpdateChecks
         var updater = new ReleaseUpdater(http);
         try
         {
+            foreach (var status in new[] { HttpStatusCode.Forbidden, HttpStatusCode.TooManyRequests, HttpStatusCode.ServiceUnavailable })
+            foreach (var arch in new[] { Architecture.X86, Architecture.X64, Architecture.Arm64 })
+            {
+                string assetName = ReleaseUpdater.AssetName("v0.10.0", arch);
+                handler.Reply = request =>
+                {
+                    check(request.Headers.Authorization is null, "public update requests need no credentials");
+                    if (request.RequestUri!.Host == "api.github.com") return new(status);
+                    if (request.RequestUri.AbsolutePath.EndsWith("/latest"))
+                        return new(HttpStatusCode.OK) { RequestMessage = new(HttpMethod.Get, ReleaseUpdater.RepositoryUrl + "/releases/tag/v0.10.0") };
+                    if (request.RequestUri.AbsolutePath.EndsWith("/SHA256SUMS.txt"))
+                        return new(HttpStatusCode.OK) { Content = new StringContent(digest + "  " + assetName + "\n") };
+                    check(request.Method == HttpMethod.Head && request.RequestUri.AbsolutePath.EndsWith("/" + assetName), "fallback selects exact architecture asset before download");
+                    return new(HttpStatusCode.OK) { Content = new ByteArrayContent(payload) };
+                };
+                var found = await updater.CheckAsync(arch, default);
+                check(found.AssetName == assetName && found.Sha256 == digest && found.Size == payload.Length,
+                    "public-page fallback after API " + (int)status + " for " + arch);
+            }
+            foreach (string invalid in new[] { "", digest + "  wrong.exe\n", digest + "  " + release.AssetName + "\n" + digest + "  " + release.AssetName + "\n" })
+            {
+                bool rejected = false;
+                try { PublicReleaseSource.ReadDigest(invalid, release.AssetName); } catch (IOException) { rejected = true; }
+                check(rejected, "public fallback rejects missing, wrong-architecture and duplicate checksums");
+            }
+            foreach (Exception failure in new Exception[] { new HttpRequestException("offline API"), new TaskCanceledException("API timeout") })
+            {
+                handler.Reply = request =>
+                {
+                    if (request.RequestUri!.Host == "api.github.com") throw failure;
+                    if (request.RequestUri.AbsolutePath.EndsWith("/latest"))
+                        return new(HttpStatusCode.OK) { RequestMessage = new(HttpMethod.Get, release.PageUrl) };
+                    if (request.RequestUri.AbsolutePath.EndsWith("/SHA256SUMS.txt"))
+                        return new(HttpStatusCode.OK) { Content = new StringContent(digest + " *" + release.AssetName + "\r\n") };
+                    return new(HttpStatusCode.OK) { Content = new ByteArrayContent(payload) };
+                };
+                check((await updater.CheckAsync(Architecture.X64, default)).Sha256 == digest, "network failure and API timeout use public source");
+            }
+            foreach (string location in new[] { "https://example.com/releases/tag/v0.10.0", release.PageUrl + "-beta", release.PageUrl + "?asset=other" })
+            {
+                handler.Reply = request => request.RequestUri!.Host == "api.github.com" ? new(HttpStatusCode.TooManyRequests) :
+                    new(HttpStatusCode.OK) { RequestMessage = new(HttpMethod.Get, location) };
+                bool rejected = false;
+                try { await updater.CheckAsync(Architecture.X64, default); } catch (IOException) { rejected = true; }
+                check(rejected, "public fallback rejects foreign or non-stable release redirects");
+            }
             handler.Reply = _ => new(HttpStatusCode.TooManyRequests);
-            bool limited = false;
-            try { await updater.CheckAsync(Architecture.X64, default); } catch (IOException ex) { limited = ex.Message.Contains("稍后重试"); }
-            check(limited, "API rate limits produce retry guidance");
+            bool unavailable = false;
+            try { await updater.CheckAsync(Architecture.X64, default); } catch (IOException ex) { unavailable = ex.Message.Contains("无需配置密钥"); }
+            check(unavailable, "both update sources failing produce actionable guidance");
+            int requests = 0;
+            handler.Reply = _ => { requests++; throw new OperationCanceledException(); };
+            using (var canceledCheck = new CancellationTokenSource())
+            {
+                canceledCheck.Cancel();
+                bool checkCanceled = false;
+                try { await updater.CheckAsync(Architecture.X64, canceledCheck.Token); } catch (OperationCanceledException) { checkCanceled = true; }
+                check(checkCanceled && requests <= 1, "user cancellation never starts public fallback");
+            }
+            handler.Reply = request => request.RequestUri!.Host == "api.github.com" ? new(HttpStatusCode.OK) { Content = new StringContent(Metadata(hash: "")) } : throw new Exception("Unsafe fallback");
+            bool invalidMetadata = false;
+            try { await updater.CheckAsync(Architecture.X64, default); } catch (IOException) { invalidMetadata = true; }
+            check(invalidMetadata, "invalid API integrity metadata is not bypassed through fallback");
             handler.Reply = _ => new(HttpStatusCode.OK) { Content = new StringContent(Metadata()) };
             check((await updater.CheckAsync(Architecture.X64, default)).Version == release.Version, "release API response reaches the version parser");
 

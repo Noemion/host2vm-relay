@@ -685,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "h2vm-agent"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "tokio",
@@ -693,7 +693,7 @@ dependencies = [
 
 [[package]]
 name = "h2vm-core"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "russh",
@@ -1544,7 +1544,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-key"
-version = "0.7.0-rc.11"
+version = "0.8.0-rc.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9a32fae177b74a22aa9c5b01bf7e68b33545be32d9e381e248058d2adc15ce3"
 dependencies = [

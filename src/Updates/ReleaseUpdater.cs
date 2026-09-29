@@ -26,13 +26,26 @@ internal sealed class ReleaseUpdater(HttpClient http)
     public async Task<ReleaseUpdate> CheckAsync(Architecture architecture, CancellationToken token)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(30));
+        deadline.CancelAfter(TimeSpan.FromSeconds(45));
+        try { return await CheckApiAsync(architecture, deadline.Token).ConfigureAwait(false); }
+        catch (HttpRequestException) { }
+        catch (OperationCanceledException) when (!deadline.IsCancellationRequested) { }
+        deadline.Token.ThrowIfCancellationRequested();
+        try { return await new PublicReleaseSource(http).CheckAsync(architecture, deadline.Token).ConfigureAwait(false); }
+        catch (HttpRequestException ex)
+        {
+            throw new IOException("GitHub API 与公开发布页均未能完成更新检查，请检查网络或稍后重试。无需配置密钥。", ex);
+        }
+    }
+
+    private async Task<ReleaseUpdate> CheckApiAsync(Architecture architecture, CancellationToken token)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        deadline.CancelAfter(TimeSpan.FromSeconds(8));
         using var request = Request(LatestUrl);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         request.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
-        if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests)
-            throw new IOException("GitHub 暂时限制了更新请求，请稍后重试，或打开发布页面查看。");
         response.EnsureSuccessStatusCode();
         await response.Content.LoadIntoBufferAsync(1024 * 1024).WaitAsync(deadline.Token).ConfigureAwait(false);
         return ParseRelease(await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false), architecture);
@@ -40,26 +53,38 @@ internal sealed class ReleaseUpdater(HttpClient http)
 
     internal static ReleaseUpdate ParseRelease(string json, Architecture architecture)
     {
-        string rid = architecture switch { Architecture.X64 => "x64", Architecture.X86 => "x86", Architecture.Arm64 => "arm64", _ => throw new NotSupportedException("当前系统架构暂不支持自动升级。") };
         using var document = JsonDocument.Parse(json);
         var release = document.RootElement;
         string tag = release.GetProperty("tag_name").GetString() ?? "";
-        if (release.GetProperty("draft").GetBoolean() || release.GetProperty("prerelease").GetBoolean() ||
-            !Regex.IsMatch(tag, @"^v[0-9]+\.[0-9]+\.[0-9]+$", RegexOptions.CultureInvariant) || !Version.TryParse(tag[1..], out var version))
+        if (release.GetProperty("draft").GetBoolean() || release.GetProperty("prerelease").GetBoolean())
             throw new IOException("发布信息不是受支持的正式版本，请打开 GitHub 查看。");
-        // Assembly versions have four components; normalize tags to the same shape.
-        version = new Version(version.Major, version.Minor, version.Build, 0);
-        string name = $"Host2VMRelay-{version.ToString(3)}-win-{rid}-Setup.exe";
+        string name = AssetName(tag, architecture);
         var assets = release.GetProperty("assets").EnumerateArray().Where(a => a.GetProperty("name").GetString() == name).ToArray();
         if (assets.Length != 1) throw new IOException("该版本尚未提供当前系统架构的安装包，请稍后重试。");
         var asset = assets[0];
+        return CreateRelease(tag, architecture, asset.GetProperty("size").GetInt64(),
+            asset.TryGetProperty("digest", out var value) ? value.GetString() ?? "" : "",
+            asset.GetProperty("browser_download_url").GetString() ?? "");
+    }
+
+    internal static string AssetName(string tag, Architecture architecture)
+    {
+        string rid = architecture switch { Architecture.X64 => "x64", Architecture.X86 => "x86", Architecture.Arm64 => "arm64", _ => throw new NotSupportedException("当前系统架构暂不支持自动升级。") };
+        if (!Regex.IsMatch(tag, @"^v[0-9]+\.[0-9]+\.[0-9]+$", RegexOptions.CultureInvariant) || !Version.TryParse(tag[1..], out _))
+            throw new IOException("发布信息不是受支持的正式版本，请打开 GitHub 查看。");
+        return $"Host2VMRelay-{tag[1..]}-win-{rid}-Setup.exe";
+    }
+
+    internal static ReleaseUpdate CreateRelease(string tag, Architecture architecture, long size, string digest, string url)
+    {
+        string name = AssetName(tag, architecture);
+        var parsed = Version.Parse(tag[1..]);
+        var version = new Version(parsed.Major, parsed.Minor, parsed.Build, 0);
         string expectedUrl = RepositoryUrl + "/releases/download/" + tag + "/" + name;
-        if (asset.GetProperty("browser_download_url").GetString() != expectedUrl)
+        if (url != expectedUrl)
             throw new IOException("安装包下载地址与项目仓库不符，已拒绝下载。");
-        string digest = asset.TryGetProperty("digest", out var value) ? value.GetString() ?? "" : "";
         if (!Regex.IsMatch(digest, "^sha256:[a-fA-F0-9]{64}$", RegexOptions.CultureInvariant))
             throw new IOException("安装包缺少有效的 SHA-256 校验信息，请在 GitHub 查看发布状态。");
-        long size = asset.GetProperty("size").GetInt64();
         if (size <= 0 || size > MaximumInstallerSize) throw new IOException("安装包大小异常，已拒绝下载。");
         return new(version, tag, name, new Uri(expectedUrl), size, digest[7..]);
     }
@@ -114,7 +139,7 @@ internal sealed class ReleaseUpdater(HttpClient http)
         catch { cache.DeleteDownload(folder); throw; }
     }
 
-    private static HttpRequestMessage Request(string url)
+    internal static HttpRequestMessage Request(string url)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.UserAgent.ParseAdd("Host2VMRelay/" + CurrentVersion.ToString(3));
