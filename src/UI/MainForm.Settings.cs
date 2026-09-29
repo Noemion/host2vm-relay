@@ -7,6 +7,8 @@ public sealed partial class MainForm
     private void BuildSettings()
     {
         var page = PageContent("设置");
+        UiLayout.Add(page, BuildScheduleSettings());
+        UiLayout.Add(page, BuildCalendarSettings());
         var current = new TextBox { Name = "settingsFolder", ReadOnly = true, Text = Settings.Folder };
         var notice = UiLayout.Help("迁移已保存的设置。未保存的规则请先保存；旧目录不会删除。");
         var open = UiLayout.Button("打开目录", 110);
@@ -37,7 +39,7 @@ public sealed partial class MainForm
         string executable = Environment.ProcessPath ?? throw new IOException("无法确定当前程序路径。");
         var autoStart = new CheckBox { Name = "startWithWindows", Text = "开机自启动（登录 Windows 后运行）", AutoSize = true };
         var silentStart = new CheckBox { Name = "silentStart", Text = "静默启动（仅显示托盘图标）", AutoSize = true, Checked = settings.SilentStart };
-        var startupStatus = UiLayout.Help("两个选项独立生效，默认关闭。静默启动后可双击托盘图标打开窗口；不会自动连接虚拟机。");
+        var startupStatus = UiLayout.Help("两个选项独立生效，默认关闭。静默启动后可双击托盘图标打开窗口；启用定时连接时将按时段自动连接。");
         bool changingStartup = false;
         try { autoStart.Checked = startup.IsEnabled(executable); }
         catch (Exception ex) { autoStart.Enabled = false; startupStatus.Text = "无法读取启动项：" + ex.Message; }

@@ -71,6 +71,12 @@ Windows 的 x64、x86、ARM64 转发程序与 Linux 辅助程序并行构建，�
 
 ## 职责与并发
 
+定时连接与日历更新使用 Windows 本机时间。`ConnectionSchedule` 判断跨午夜窗口，`ScheduleActivation` 记住本次时段的连接意图；结束时间在网络忙状态检查前生效，可以取消正在进行的 SSH 连接。`CalendarUpdateSettings` 按月份、日期和小时槽限制自动更新，成功月份与最近尝试槽均随配置保存。
+
+`HolidayCalendarUpdater` 从 holiday-cn 下载前一年、当年和次年日历，校验年份、公告地址、完整节日集合和日期唯一性；未公布的空文件不建立日历覆盖。缓存与更新结果通过 `Settings.SaveUpdated` 原子保存。网络失败不替换旧缓存，自动更新与 SSH 轮询互不等待。
+
+`--self-test` 包含日历解析、调休与时间边界、每月重试、配置持久化，以及隔离配置下的窗口调度／更新状态检查；不会连接真实虚拟机或修改个人配置。`--calendar-check <结果.json>` 可选执行真实在线读取验证，不修改个人配置，也不放入依赖离线结果的 CI 自检。
+
 详见 architecture/FORWARDING_ENGINE.md。界面仅管理连接意图、主机信任、设置和显示；RelaySession 管理连接资源与恢复；RelayCoreProcess 管理 Rust 子进程及控制管道。UDP 协议仍保持版本 1，历史 Python 组件移入 tests/fixtures 作为对照，不进入产品。
 
 日志入口限制为 1000 条待显示记录，每次 UI 刷新最多 100 条及 16 KiB，丢弃情况会明确提示。网络任务不得同步等待界面日志更新。取消、资源清理与连接准入必须可并发调用，不能持有状态锁等待网络或进程退出。

@@ -30,6 +30,13 @@ public sealed partial class MainForm
     private async Task Connect(bool automatic = false)
     {
         if (busy || polling) return;
+        var window = EvaluateSchedule();
+        if (settings.Schedule.Enabled && !window.Active)
+        {
+            feed.Text = window.Description + "；如需立即连接，请先在设置中关闭定时连接。";
+            return;
+        }
+        if (!automatic) scheduleActivation.Suppress(window);
         try { SaveConnection(); }
         catch (Exception ex) { wanted = false; connectionFailureReason = ex.Message; PresentPath(ex.Message); Error(ex); return; }
         connectionFailureReason = null;
@@ -43,6 +50,8 @@ public sealed partial class MainForm
         string endpoint = settings.Host + ":" + settings.Port;
         var options = new RelayConnectionOptions(settings.Host, settings.Port, settings.User,
             settings.SocksPort, settings.UseKey, settings.KeyPath, secret.Text, settings.EnableUdp, settings.ConcurrentConnectionLimit);
+        using var attempt = CancellationTokenSource.CreateLinkedTokenSource(formLifetime.Token);
+        connectionAttempt = attempt;
         try
         {
             await Cleanup();
@@ -55,7 +64,7 @@ public sealed partial class MainForm
                 {
                     try
                     {
-                        if (formLifetime.IsCancellationRequested) { decision.TrySetCanceled(); return; }
+                        if (attempt.IsCancellationRequested) { decision.TrySetCanceled(); return; }
                         bool accepted = false;
                         if (settings.HostKeys.TryGetValue(endpoint, out var known))
                         {
@@ -68,15 +77,20 @@ public sealed partial class MainForm
                             settings = settings.SaveUpdated(candidate => candidate.HostKeys[endpoint] = fingerprint);
                             accepted = true;
                         }
-                        else wanted = false;
+                        else { wanted = false; if (automatic) Log("自动连接未获信任，请先手动连接并核对服务器指纹。"); }
                         decision.TrySetResult(accepted);
                     }
                     catch (Exception ex) { decision.TrySetException(ex); }
                 });
                 // Cancellation must release the SSH callback even when the UI is closing.
-                return decision.Task.WaitAsync(formLifetime.Token).GetAwaiter().GetResult();
-            }, Log, formLifetime.Token, message => { if (Volatile.Read(ref settings).LogForwardingRequests) Log(message); });
-            if (!wanted || IsDisposed) { await connectionCleanup.Enqueue(connected, connected.DisposalCompleted); return; }
+                return decision.Task.WaitAsync(attempt.Token).GetAwaiter().GetResult();
+            }, Log, attempt.Token, message => { if (Volatile.Read(ref settings).LogForwardingRequests) Log(message); });
+            if (!wanted || IsDisposed || attempt.IsCancellationRequested || (settings.Schedule.Enabled && !EvaluateSchedule().Active))
+            {
+                wanted = false;
+                await connectionCleanup.Enqueue(connected, connected.DisposalCompleted);
+                return;
+            }
             session = connected;
             connected.StartMonitoring(retry.Checked);
             ApplyRouteFiles();
@@ -89,19 +103,33 @@ public sealed partial class MainForm
             await Cleanup();
             if (IsDisposed || formLifetime.IsCancellationRequested) return;
             TryPublishRules();
-            PresentPath(ex.Message);
-            Log("连接失败：" + ex.Message);
+            if (attempt.IsCancellationRequested && !wanted)
+                Log("定时时段已结束，已取消正在进行的连接。");
+            else
+            {
+                PresentPath(ex.Message);
+                Log("连接失败：" + ex.Message);
+            }
         }
         finally
         {
+            connectionAttempt = null;
             busy = false;
             nextRetry = DateTime.UtcNow.AddSeconds(settings.ReconnectDelaySeconds);
-            if (!IsDisposed) SetConnectionControls(session?.IsConnected == true);
+            if (!IsDisposed)
+            {
+                SetConnectionControls(session?.IsConnected == true);
+                if (!wanted && session is null && settings.Schedule.Enabled && !EvaluateSchedule().Active)
+                    PresentScheduledStop();
+            }
         }
     }
 
     private async Task PollNetworkAsync()
     {
+        if (IsDisposed || formLifetime.IsCancellationRequested) return;
+        CheckCalendarUpdate();
+        if (await ApplyScheduleAsync()) return;
         if (busy || polling || !wanted) return;
         if (session?.IsConnected != true)
         {
@@ -212,8 +240,9 @@ public sealed partial class MainForm
         foreach (var control in new Control[] { host, port, user, auth, keyPath, secret, socksPort, remember, enableUdp }) control.Enabled = !connected && !busy;
         if (keyControls is not null) keyControls.Enabled = !connected && !busy && auth.SelectedIndex == 1;
     }
-    private async Task Stop()
+    private async Task Stop(bool manual = true)
     {
+        if (manual) scheduleActivation.Suppress(EvaluateSchedule());
         if (busy) return;
         wanted = false; busy = true; SetConnectionControls(false);
         state.Text = "● 正在断开…"; feed.Text = "正在后台释放连接，请稍候。";
@@ -228,10 +257,11 @@ public sealed partial class MainForm
             if (IsDisposed) return;
             lastPath = "host";
             state.Text = "● 已断开"; state.ForeColor = Color.DimGray; feed.Text = "宿主机原有分流 · 虚拟机中继已停用";
-            connectionFailureReason = null; connectionTip.SetToolTip(state, "已主动断开，不会自动重连。");
+            string resume = settings.Schedule.Enabled ? "下个定时时段可自动连接。" : "不会自动重连。";
+            connectionFailureReason = null; connectionTip.SetToolTip(state, "已断开，" + resume);
             connectionLoad.Text = "当前无转发连接。";
             SetConnectionIcon(ConnectionIconState.Disconnected, "虚拟机已断开");
-            Log($"已主动断开，清理耗时 {elapsed.Elapsed.TotalSeconds:F1} 秒；不会自动重连。");
+            Log($"{(manual ? "已主动断开" : "定时时段已结束，已断开")}，清理耗时 {elapsed.Elapsed.TotalSeconds:F1} 秒；{resume}");
         }
         catch (Exception ex) { if (!IsDisposed) Error(ex); }
         finally

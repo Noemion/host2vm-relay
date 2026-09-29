@@ -9,6 +9,7 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
         if (args.Contains("--self-test")) { SelfTest.Run(args.Last()); return; }
+        if (args.Contains("--calendar-check")) { HolidayCalendarChecks.RunLiveAsync(args.Last()).GetAwaiter().GetResult(); return; }
         bool startupCheck = args.Contains("--startup-check");
         bool smoke = args.Contains("--smoke") || startupCheck;
         using var mutex = new Mutex(true, smoke ? "Local\\Host2VMRelay.Smoke" : "Local\\Host2VMRelay.Desktop", out bool first);

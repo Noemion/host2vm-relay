@@ -205,7 +205,7 @@ internal sealed class UiAcceptance
             foreach (var scroll in parents) scroll.ScrollControlIntoView(control);
         Application.DoEvents();
     }
-    private static bool IsLeaf(Control c) => c is Label or ButtonBase or TextBoxBase or ComboBox or NumericUpDown;
+    private static bool IsLeaf(Control c) => c is Label or ButtonBase or TextBoxBase or ComboBox or NumericUpDown or DateTimePicker;
     private static IEnumerable<Control> All(Control root)
     {
         yield return root;

@@ -126,6 +126,7 @@ public sealed partial class MainForm
             wanted = false; SetConnectionControls(false);
             audit.Check(Math.Abs(UiLayout.BaseFontPoints - (float)settings.FontSizePoints) < .01F && Math.Abs(UiTheme.ContentScale - .8F * settings.UiScalePercent / 100F) < .01F, "saved content scale and independent font size are applied");
             SelectPage(4); UiAcceptance.Settle(this);
+            VerifyScheduleForTest(audit.Check);
             var folderField = pages.Pages[4].Controls.Find("settingsFolder", true).OfType<TextBox>().Single();
             var capacityField = pages.Pages[4].Controls.Find("concurrentConnectionLimit", true).OfType<NumericUpDown>().Single();
             audit.Check(capacityField.Minimum == 64 && capacityField.Maximum == 2048 && capacityField.Value == settings.ConcurrentConnectionLimit,

@@ -90,6 +90,9 @@ internal static class SelfTest
             VmwareNatChecks.Run(output, Check);
             ClashHealthChecks.RunAsync(Check).GetAwaiter().GetResult();
             StartupChecks.Run(Check);
+            ScheduleChecks.Run(Check);
+            HolidayCalendarChecks.RunAsync(Check).GetAwaiter().GetResult();
+            MainForm.RunScheduleSelfTest(Check);
             ReleaseUpdateChecks.RunAsync(output, Check).GetAwaiter().GetResult();
             ExportScriptCases(Path.Combine(Path.GetDirectoryName(output)!, "script-cases.json"));
             lines.Add("PASS actual C# generated scripts exported for JavaScript execution checks");

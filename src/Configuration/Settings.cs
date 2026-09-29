@@ -23,6 +23,9 @@ public sealed class Settings
     public bool ShowConnectionNotifications { get; set; } = true;
     public bool LogForwardingRequests { get; set; } = true;
     public bool SilentStart { get; set; }
+    public ConnectionSchedule Schedule { get; set; } = new();
+    public CalendarUpdateSettings CalendarUpdate { get; set; } = new();
+    public Dictionary<int, string> CalendarYears { get; set; } = new();
     public int ReconnectDelaySeconds { get; set; } = 15;
     public const int MinConcurrentConnections = 64, MaxConcurrentConnections = 2048;
     public int ConcurrentConnectionLimit { get; set; } = 512;
@@ -59,6 +62,14 @@ public sealed class Settings
     }
     private void Validate()
     {
+        if (Schedule is null) throw new IOException("settings.json 的定时连接配置不能为空。");
+        Schedule.Validate();
+        if (CalendarUpdate is null || CalendarYears is null || CalendarYears.Count > 20)
+            throw new IOException("settings.json 的日历更新配置无效。");
+        CalendarUpdate.Validate();
+        foreach (var year in CalendarYears)
+            if (year.Value is null || HolidayYear.Parse(year.Value, year.Key) is null)
+                throw new IOException("缓存日历不完整，请修正配置后重试。");
         if (ConcurrentConnectionLimit is < MinConcurrentConnections or > MaxConcurrentConnections)
             throw new IOException("并发连接上限必须在 64～2048 之间，请修正 settings.json。");
         if (UiScalePercent is < MinUiScalePercent or > MaxUiScalePercent || FontSizePoints is < MinFontSizePoints or > MaxFontSizePoints || ReconnectDelaySeconds is < 5 or > 120)
@@ -82,6 +93,10 @@ public sealed class Settings
     {
         var candidate = (Settings)MemberwiseClone();
         candidate.HostKeys = new Dictionary<string, string>(HostKeys);
+        candidate.Schedule = new ConnectionSchedule { Enabled = Schedule.Enabled, Start = Schedule.Start,
+            End = Schedule.End, Workdays = Schedule.Workdays, RestDays = Schedule.RestDays };
+        candidate.CalendarUpdate = CalendarUpdate.Copy();
+        candidate.CalendarYears = new Dictionary<int, string>(CalendarYears);
         update(candidate);
         candidate.Save();
         return candidate;

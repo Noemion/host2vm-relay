@@ -37,6 +37,7 @@ public sealed partial class MainForm : Form
     {
         suppressInitialShow = startHidden;
         settings = Settings.Load();
+        calendar = new(settings.CalendarYears);
         SuspendLayout(); DoubleBuffered = true;
         Text = "Host2VMRelay"; Font = UiLayout.BodyFont(); ForeColor = UiTheme.Ink;
         AutoScaleDimensions = new SizeF(96F, 96F); AutoScaleMode = AutoScaleMode.Dpi;

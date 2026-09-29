@@ -39,7 +39,7 @@ public sealed partial class MainForm
         var identity = UiLayout.Card("SSH 连接", "填写虚拟机的地址与登录信息。",
             UiLayout.Pair(UiLayout.Field("虚拟机地址", host), UiLayout.Field("SSH 端口", port), 72),
             UiLayout.Pair(UiLayout.Field("用户名", user), UiLayout.Field("认证方式", auth)),
-            keyField, passwordField, UiLayout.Actions(connect, disconnect), connectionLoad);
+            keyField, passwordField, UiLayout.Actions(connect, disconnect), connectionLoad, scheduleOverview);
         UiLayout.Add(page, identity);
         var preferences = UiLayout.Stack(); preferences.Margin = UiTheme.Spacing(0, 4, 0, 0);
         remember.Margin = UiTheme.Spacing(0, 4, 0, 10); retry.Margin = UiTheme.Spacing(0, 4, 0, 10);
