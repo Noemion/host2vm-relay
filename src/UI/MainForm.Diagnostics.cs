@@ -196,6 +196,13 @@ public sealed partial class MainForm
                     var guide = pages.Pages[i].Controls.Find("tunInstructions", true).Single();
                     toggle.PerformClick(); UiAcceptance.Settle(this); audit.Check(guide.Visible, "TUN disclosure opens"); audit.Inspect(this, "page-2-expanded", pages.Pages[2]);
                     toggle.PerformClick(); audit.Check(!guide.Visible, "TUN disclosure closes");
+                    var dnsToggle = pages.Pages[i].Controls.Find("toggleDnsExceptionGuide", true).OfType<Button>().Single();
+                    var dnsGuide = pages.Pages[i].Controls.Find("dnsExceptionInstructions", true).Single();
+                    audit.Check(!dnsGuide.Visible, "optional DNS guide starts collapsed");
+                    dnsToggle.PerformClick(); UiAcceptance.Settle(this);
+                    audit.Check(dnsGuide.Visible, "optional DNS guide opens");
+                    audit.Inspect(this, "page-2-dns-guide", pages.Pages[2]);
+                    dnsToggle.PerformClick(); audit.Check(!dnsGuide.Visible, "optional DNS guide closes");
                     pages.Pages[i].Controls.Find("openScriptWorkspace", true).OfType<Button>().Single().PerformClick();
                     UiAcceptance.Settle(this);
                     var workspace = pages.Pages[i].Controls.OfType<PageScrollPanel>().Single().Controls.OfType<ScriptDialog>().Single();

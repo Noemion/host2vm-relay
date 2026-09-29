@@ -171,6 +171,7 @@ public sealed partial class MainForm
         UiLayout.Add(page, UiLayout.Card("02  配置虚拟网卡", "在 Clash 设置界面完成 TUN、DNS 劫持和虚拟机路由排除。", UiLayout.Actions(toggle, copyExclusion), routeFeedback, tunDetails));
         tunDetails.Visible = false;
         UiLayout.Add(page, BuildVmwareNetworkHelp());
+        UiLayout.Add(page, BuildDnsExceptionHelp());
         var testUrl = new TextBox { Text = settings.TestUrl, Name = "testUrl" };
         var test = UiLayout.Button("测试 SOCKS5 连通性", 220);
         var testResult = UiLayout.Help("连接隧道后测试。此操作不验证 TUN 是否接管 DNS。"); testResult.Name = "testResult";
