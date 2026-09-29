@@ -78,7 +78,7 @@ internal static class RouteDiagnostics
         try
         {
             report($"目标：{target.IdnHost}:{target.Port}（TCP）");
-            report(relayConnected ? "虚拟机连接：已建立。" : "虚拟机连接：未建立，不能确认虚拟机转发。");
+            report(relayConnected ? "虚拟机 SSH 连接：已建立；不代表虚拟机出口网络或 VPN 可用。" : "虚拟机连接：未建立，不能确认虚拟机转发。");
             string compiled = Rules.Compile(savedRules);
             string? match = MatchLocal(compiled, target.IdnHost);
             report(match is null ? "本地规则：目标未直接命中。主域名不包含子域名，请使用 *.域名；域名解析后的 IP 匹配以实测为准。" : "本地规则命中：" + match);

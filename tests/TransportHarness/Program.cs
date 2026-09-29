@@ -25,6 +25,7 @@ if (args.Length == 4 && args[0] == "--ssh-handshake")
 }
 
 if (args.Length == 1 && args[0] == "--health-check") { await HealthChecks.RunAsync(); return; }
+if (args.Length == 4 && args[0] == "--live-tun-check") { await LiveTunChecks.RunAsync(args[1], int.Parse(args[2]), args[3]); return; }
 if (args.Length == 2 && args[0] == "--clash-switch-check") { await ClashSwitchChecks.RunAsync(args[1]); return; }
 if (args.Length == 2 && args[0] == "--tcp-check")
 {

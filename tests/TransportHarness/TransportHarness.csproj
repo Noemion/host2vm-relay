@@ -19,6 +19,7 @@
     <Compile Include="../../src/Networking/RelaySocksServer.cs" Link="RelaySocksServer.cs" />
     <Compile Include="../../src/Networking/DuplexRelay.cs" Link="DuplexRelay.cs" />
     <Compile Include="../../src/Integration/ClashScript.cs" Link="ClashScript.cs" />
+    <Compile Include="../../src/Networking/Rules.cs" Link="Rules.cs" />
     <Compile Include="../../src/Integration/ClashHealthSync.cs" Link="ClashHealthSync.cs" />
     <Compile Include="../../src/Integration/ClashRelayProtocol.cs" Link="ClashRelayProtocol.cs" />
     <Compile Include="../../src/Integration/ClashControlClient.cs" Link="ClashControlClient.cs" />

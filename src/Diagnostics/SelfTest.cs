@@ -87,6 +87,7 @@ internal static class SelfTest
             Check(tooLarge, "reject oversized source");
             UpdateSelfTest.Run(output, Check);
             RouteDiagnosticChecks.Run(Check);
+            VmwareNatChecks.Run(output, Check);
             ClashHealthChecks.RunAsync(Check).GetAwaiter().GetResult();
             StartupChecks.Run(Check);
             ReleaseUpdateChecks.RunAsync(output, Check).GetAwaiter().GetResult();
@@ -123,6 +124,7 @@ internal static class SelfTest
         };
         var generated = cases.ToDictionary(x => x.Key, x => ClashScript.Generate(1080, "192.168.229.10", x.Value));
         generated["regenerated"] = ClashScript.Generate(1081, "fd00::8", generated["merge"]);
+        generated["vpn-gateway"] = ClashScript.Generate(1080, vpnGatewayDomains: "VPN.Example.com\nvpn.example.com\n# login only");
         File.WriteAllText(path, JsonSerializer.Serialize(generated, new JsonSerializerOptions { WriteIndented = true }));
     }
 }

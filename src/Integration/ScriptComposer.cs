@@ -28,7 +28,7 @@ public static class ScriptComposer
     // fragment without its own main from accidentally calling our managed main.
     private const string DeferredOpen = "const __h2vmOriginalMain = (config, profileName) => {\n  const main = undefined;\n  return (() => {\n";
     private const string DeferredClose = "  return typeof main === \"function\" ? main(config, profileName) : config;\n  })();\n};\n\n";
-    private const string GeneratorVersion = "0.6.3";
+    private const string GeneratorVersion = "0.7.0";
     private static readonly HashSet<string> LegacyFingerprints = new(StringComparer.Ordinal)
     {
         "b0b8a56bc87d85fe2bec2b63349965a7de3c7f00660dfa3d2a4a7412d76d138f", // 0.4.1-0.5.0
