@@ -88,8 +88,8 @@ internal sealed class RelaySession : IDisposable
         catch { if (session is not null) session.Dispose(); else core.Dispose(); throw; }
     }
 
-    // Called under gate. The shared lease includes both probe deadlines and
-    // scheduling headroom. UDP startup never blocks polling.
+    // Called under gate. SSH and UDP probes run concurrently so neither
+    // protocol's health waits for the other's full timeout.
     private void Publish()
     {
         if (!disposed) relay.SetUpstream(core.Port, udp);
@@ -130,17 +130,19 @@ internal sealed class RelaySession : IDisposable
         try
         {
             if (!IsConnected) return false;
+            UdpTunnel? tested;
+            lock (gate) tested = udp;
+            Task<bool>? udpProbe = tested?.ProbeAsync(lifetime.Token);
             bool alive;
             try
             {
-                await core.RequestAsync("probe", RelayHealthTiming.ProbeTimeout + TimeSpan.FromSeconds(1), lifetime.Token).ConfigureAwait(false);
+                await core.RequestAsync("probe", RelayHealthTiming.ProbeTimeout, lifetime.Token).ConfigureAwait(false);
                 alive = true;
             }
             catch { alive = false; }
             if (!alive || lifetime.IsCancellationRequested) { Dispose(); return false; }
-            UdpTunnel? tested;
-            lock (gate) { Publish(); tested = udp; }
-            if (tested is not null && !await tested.ProbeAsync(lifetime.Token).ConfigureAwait(false))
+            lock (gate) Publish();
+            if (tested is not null && !await udpProbe!.ConfigureAwait(false))
             {
                 lock (gate)
                 {

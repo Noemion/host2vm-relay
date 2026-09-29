@@ -50,7 +50,7 @@ public sealed partial class MainForm : Form
         remember.Checked = settings.RememberSecret; retry.Checked = settings.Reconnect; ruleText.Text = settings.Rules.Replace("\n", Environment.NewLine);
         try { secret.Text = SecretStore.Unprotect(settings.ProtectedSecret); }
         catch { Log("保存的密码无法在当前 Windows 用户下解密，请重新输入。"); }
-        try { ClashRuleFile.Disable(); ClashRuleRefresh.Request(Log); }
+        try { ApplyRouteFiles(); }
         catch (Exception ex) { Log("无法初始化 Clash 本地规则文件：" + ex.Message); }
         var menu = new TrayMenu { Font = Font };
         menu.Items.Add("打开主窗口", null, (_, _) => Restore());
@@ -82,7 +82,7 @@ public sealed partial class MainForm : Form
         {
             wanted = false; timer.Stop();
             _ = formLifetime.CancelAsync();
-            _ = Cleanup(); TryDisableRules();
+            _ = Cleanup(); TryPublishRules();
             logTimer.Stop(); logTimer.Dispose();
             tray.Dispose(); connectionTip.Dispose(); menu.Dispose(); timer.Dispose(); windowIcon?.Dispose(); trayIcon?.Dispose();
         };
@@ -117,6 +117,8 @@ public sealed partial class MainForm : Form
             }
         };
         ResumeLayout(true); timer.Start(); logTimer.Start();
+        if (SettingsLocation.SameFolder(ClashRuleFile.Folder, ClashRuleFile.DefaultFolder))
+            _ = Task.Run(() => new ClashHealthSync(ClashControlClient.Open, Log).RunAsync(formLifetime.Token));
     }
     protected override void SetVisibleCore(bool value)
     {
@@ -165,5 +167,5 @@ public sealed partial class MainForm : Form
         pendingLogs.Add(text);
     }
     private void Error(Exception ex) { Log(ex.Message); feed.Text = "操作失败：" + ex.Message; }
-    private void TryDisableRules() { try { ClashRuleFile.Disable(); ClashRuleRefresh.Request(Log); } catch (Exception ex) { Log("停用 Clash 本地规则失败：" + ex.Message); } }
+    private void TryPublishRules() { try { ApplyRouteFiles(); } catch (Exception ex) { Log("同步 Clash 本地规则失败：" + ex.Message); } }
 }

@@ -84,7 +84,7 @@ internal static class RouteDiagnostics
             report(match is null ? "本地规则：目标未直接命中。主域名不包含子域名，请使用 *.域名；域名解析后的 IP 匹配以实测为准。" : "本地规则命中：" + match);
             string active = await File.ReadAllTextAsync(ClashRuleFile.FilePath, token);
             report(active.Replace("\r\n", "\n").Trim() == compiled.Trim()
-                ? "规则文件：与已保存规则一致。" : "规则文件：与已保存规则不同，可能因连接未就绪而暂停转发。");
+                ? "规则文件：与已保存规则一致。" : "规则文件：与已保存规则不同，请重新保存规则并检查应用情况。");
 
             stage = "读取 Clash 当前状态";
             using var api = ClashControlClient.Open();

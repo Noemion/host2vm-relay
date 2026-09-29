@@ -51,7 +51,8 @@ internal sealed class LoadRelayProcess : IAsyncDisposable
     {
         using var relay = new RelaySocksServer(0, maxTransfers: limit);
         relay.SetUpstream(upstream, null);
-        using var refresh = new System.Threading.Timer(_ => relay.SetUpstream(upstream, null), null, 1000, 1000);
+        using var refresh = new System.Threading.Timer(_ => relay.SetUpstream(upstream, null), null,
+            RelayHealthTiming.PollInterval, RelayHealthTiming.PollInterval);
         Console.WriteLine(relay.Port);
         while (await Console.In.ReadLineAsync() is not null)
         {

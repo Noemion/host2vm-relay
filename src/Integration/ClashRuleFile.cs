@@ -6,8 +6,8 @@ public static class ClashRuleFile
     public static readonly string DefaultFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "io.github.clash-verge-rev.clash-verge-rev", "rules");
     public static string Folder = DefaultFolder;
-    public static string FilePath => Path.Combine(Folder, "host2vm-relay-rules.txt");
-    public static string UdpFilePath => Path.Combine(Folder, "host2vm-relay-udp-rules.txt");
+    public static string FilePath => Path.Combine(Folder, ClashRelayProtocol.Tcp.FileName);
+    public static string UdpFilePath => Path.Combine(Folder, ClashRelayProtocol.Udp.FileName);
     public static bool Write(string payload) => WritePath(FilePath, payload);
     public static bool WriteUdp(string payload) => WritePath(UdpFilePath, payload);
     private static bool WritePath(string path, string payload)

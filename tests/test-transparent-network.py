@@ -137,6 +137,8 @@ def tests():
     assert client('udp', '198.19.0.3') == 'ERROR'
     record('baseline original host access and private destination unreachable')
     dll = ROOT / 'artifacts/transport/bin/Release/net8.0/TransportHarness.dll'
+    (OUT / 'clash-switch.log').write_text(run('dotnet', dll, '--clash-switch-check', core).stdout)
+    record('real Mihomo TCP/UDP failover, recovery and lease expiry complete within one second')
     script = OUT / 'generated.js'
     harness = start(['ip', 'netns', 'exec', CLIENT, 'dotnet', dll, '10.203.0.20', 2222, 'h2vmtest', TMP / 'clientkey', fingerprint, script], 'transport.log')
     for _ in range(150):

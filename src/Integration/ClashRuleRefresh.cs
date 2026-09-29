@@ -39,9 +39,9 @@ internal static class ClashRuleRefresh
     private static async Task RefreshAsync()
     {
         using var client = ClashControlClient.Open();
-        foreach (string name in new[] { "host2vm-relay-rules", "host2vm-relay-udp-rules" })
+        foreach (var protocol in ClashRelayProtocol.All)
         {
-            using var response = await client.PutAsync("http://localhost/providers/rules/" + name, null);
+            using var response = await client.PutAsync("providers/rules/" + protocol.Provider, null);
             response.EnsureSuccessStatusCode();
         }
     }

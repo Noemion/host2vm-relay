@@ -89,7 +89,7 @@ internal sealed class UdpTunnel : IDisposable
             if (ok) Interlocked.Exchange(ref lastProbe, Environment.TickCount64);
             return ok;
         }
-        catch (TimeoutException) { LastError = "UDP 健康探测超过三秒未收到响应。"; return false; }
+        catch (TimeoutException) { LastError = $"UDP 健康探测超过 {RelayHealthTiming.ProbeTimeout.TotalMilliseconds:0} 毫秒未收到响应。"; return false; }
         catch (OperationCanceledException) { return false; }
         catch (IOException ex) { LastError = ex.Message; return false; }
         finally { probes.TryRemove(id, out _); }

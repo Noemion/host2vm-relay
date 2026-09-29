@@ -110,7 +110,7 @@ public sealed partial class MainForm
             cancelUpdate.Visible = false;
             updateStatus.Text = "校验通过，正在关闭连接并准备安装…";
             busy = true; wanted = false; timer.Stop(); SetConnectionControls(false);
-            TryDisableRules();
+            TryPublishRules();
             await Cleanup().WaitAsync(TimeSpan.FromSeconds(15), operation.Token);
             operation.Token.ThrowIfCancellationRequested();
             PendingInstaller = installer; installer = null;

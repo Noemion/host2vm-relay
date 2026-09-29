@@ -105,6 +105,7 @@ public sealed partial class MainForm
         copyRules.Click += (_, _) => { try { Clipboard.SetText(ruleText.Text); summary.Text = "规则已复制"; copyRules.ShowFeedback("✓ 已复制"); } catch (Exception ex) { Error(ex); } };
         UiLayout.Add(page, UiLayout.Card("规则列表", "每行一个目标。命中的 TCP / UDP 优先经过虚拟机，不可用时回退原有分流。",
             UiLayout.Actions(saveRules, copyRules), new EntryFrame(PrepareRulesEditor(), true, 260), summary));
+        UiLayout.Add(page, BuildClashRuleStatus());
         UiLayout.Add(page, UiLayout.Card("支持的格式", "",
             UiLayout.Help("精确域名  code.example.com\n域名及子域名  *.example.com\n单个 IP  10.20.30.40\n网段  10.20.30.0/24"),
             UiLayout.Help("# 开头为注释。不填写协议、端口或网页路径。规则变更无需重新粘贴脚本，但服务模式可能需要在 Clash 中重新应用配置；已有连接和 DNS 缓存可能需要刷新。")));
@@ -148,6 +149,7 @@ public sealed partial class MainForm
         };
         UiLayout.Add(page, UiLayout.Card("01  生成扩展脚本", "没有自定义脚本时直接生成；也可粘贴旧版完整脚本，只更新托管区并保留自定义逻辑。将完整结果粘贴到当前订阅的“编辑扩展脚本”，保存并应用。", UiLayout.Actions(quickCopy, mergeScript), scriptFeedback));
         UiLayout.Add(page, UiLayout.Card("使脚本生效", ClashActivationGuide.Steps));
+        UiLayout.Add(page, BuildClashRuleStatus());
         var tunDetails = UiLayout.Stack(); tunDetails.Name = "tunInstructions";
         UiLayout.Add(tunDetails, UiLayout.Help("模式：规则模式\n虚拟网卡：开启 TUN 与自动路由\nDNS 劫持：any:53、tcp://any:53\n路由排除：虚拟机 IPv4/32，或 IPv6/128"));
         UiLayout.Add(tunDetails, UiLayout.Help("不要排除需要转发的目标 IP。TUN 界面字段由 Clash 管理，扩展脚本不会覆盖这些字段。Fake-IP 规则需要支持 fake-ip-filter-mode: rule 的 Mihomo 内核。"));

@@ -7,6 +7,17 @@ internal static class RouteDiagnosticChecks
 {
     public static void Run(Action<bool, string> check)
     {
+        using var staleProvider = JsonDocument.Parse("""{"ruleCount":1}""");
+        using var currentProvider = JsonDocument.Parse("""{"ruleCount":3}""");
+        string saved = Rules.Compile("*.kylinos.cn\n10.44.47.0/24\n*.kylin.com");
+        check(ClashRuleStatus.DescribeProvider("TCP", saved, saved, staleProvider.RootElement).Contains("规则未同步"),
+            "rule status detects the three-file-rules versus one-core-rule reconnect regression");
+        check(ClashRuleStatus.DescribeProvider("TCP", saved, saved, currentProvider.RootElement).Contains("内容一致性仍未验证"),
+            "matching rule counts never certify matching content");
+        check(ClashRuleStatus.DescribeProvider("TCP", saved, ClashRuleFile.DisabledPayload, staleProvider.RootElement).Contains("规则文件与当前应应用内容不一致"),
+            "stale disabled file is detected even when core and file counts agree");
+        check(ClashRuleStatus.Count("# comment\r\n\nDOMAIN,a.test\r\n") == 1,
+            "rule status ignores comments and blank lines");
         var target = RouteDiagnostics.ParseTarget("https://pm.example.com/login?token=private#fragment");
         check(target.AbsoluteUri == "https://pm.example.com/", "route diagnostics discard paths, tokens and fragments");
         bool rejected = false;

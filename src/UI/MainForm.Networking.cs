@@ -47,7 +47,7 @@ public sealed partial class MainForm
         {
             await Cleanup();
             if (IsDisposed || formLifetime.IsCancellationRequested) return;
-            TryDisableRules();
+            TryPublishRules();
             var connected = await RelaySession.OpenAsync(options, fingerprint =>
             {
                 var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -88,7 +88,7 @@ public sealed partial class MainForm
         {
             await Cleanup();
             if (IsDisposed || formLifetime.IsCancellationRequested) return;
-            TryDisableRules();
+            TryPublishRules();
             PresentPath(ex.Message);
             Log("连接失败：" + ex.Message);
         }
@@ -108,7 +108,7 @@ public sealed partial class MainForm
             polling = true;
             try
             {
-                TryDisableRules();
+                TryPublishRules();
                 PresentPath("虚拟机不可用");
                 await Cleanup();
                 if (IsDisposed || !wanted) return;
@@ -132,7 +132,7 @@ public sealed partial class MainForm
             {
                 await Cleanup();
                 if (IsDisposed || !wanted) return;
-                TryDisableRules();
+                TryPublishRules();
                 PresentPath("SSH 健康检查失败");
                 SetConnectionControls(false);
                 return;
@@ -143,7 +143,7 @@ public sealed partial class MainForm
         catch (Exception ex)
         {
             if (!ReferenceEquals(session, active) || IsDisposed) return;
-            TryDisableRules();
+            TryPublishRules();
             feed.Text = "规则同步失败，未确认切换；请查看运行日志。";
             Log("WARNING 状态同步失败：" + ex.Message);
         }
@@ -151,17 +151,17 @@ public sealed partial class MainForm
     }
     private void ApplyRouteFiles()
     {
-        bool tcp = session?.Health.Tcp == true, udp = session?.Health.Udp == true && settings.EnableUdp;
+        // Keep targets stable across disconnects; fallback health controls routing.
         // Profile objects also change for unrelated preferences. Cache by source
         // text so routine health ticks do not parse every domain again on the UI.
-        if ((tcp || udp) && compiledRulesSource != settings.Rules)
+        if (compiledRulesSource != settings.Rules)
         {
             compiledRulesPayload = Rules.Compile(settings.Rules);
             compiledRulesSource = settings.Rules;
         }
-        string payload = tcp || udp ? compiledRulesPayload : ClashRuleFile.DisabledPayload;
-        bool tcpChanged = ClashRuleFile.Write(tcp ? payload : ClashRuleFile.DisabledPayload);
-        bool udpChanged = ClashRuleFile.WriteUdp(udp ? payload : ClashRuleFile.DisabledPayload);
+        string payload = compiledRulesPayload;
+        bool tcpChanged = ClashRuleFile.Write(payload);
+        bool udpChanged = ClashRuleFile.WriteUdp(payload);
         if (tcpChanged || udpChanged) ClashRuleRefresh.Request(Log);
     }
     private void PresentPath(string? reason = null)
@@ -223,7 +223,7 @@ public sealed partial class MainForm
         try
         {
             Task cleanup = Cleanup();
-            TryDisableRules();
+            TryPublishRules();
             await cleanup;
             if (IsDisposed) return;
             lastPath = "host";

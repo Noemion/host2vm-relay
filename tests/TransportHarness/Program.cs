@@ -25,6 +25,7 @@ if (args.Length == 4 && args[0] == "--ssh-handshake")
 }
 
 if (args.Length == 1 && args[0] == "--health-check") { await HealthChecks.RunAsync(); return; }
+if (args.Length == 2 && args[0] == "--clash-switch-check") { await ClashSwitchChecks.RunAsync(args[1]); return; }
 if (args.Length == 2 && args[0] == "--tcp-check")
 {
     using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
@@ -52,6 +53,7 @@ try
             {
                 session?.Dispose();
                 session = await RelaySession.OpenAsync(options, fingerprint => fingerprint == args[4], Console.Error.WriteLine);
+                session.StartMonitoring(true);
             }
             if (!await session.RefreshAsync(true)) throw new IOException("SSH probe failed");
             var health = session.Health;
